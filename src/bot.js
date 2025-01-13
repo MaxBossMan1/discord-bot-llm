@@ -209,8 +209,34 @@ class DiscordBot {
 
         try {
             let response;
+            let prompt;
+
+            // Check if this is a reply to a message
+            if (message.reference && message.reference.messageId) {
+                try {
+                    const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
+                    
+                    // Only process if it's a reply to the bot's message
+                    if (repliedMessage.author.id === this.client.user.id) {
+                        console.log(`[Reply Context] Found reply to bot's message:
+    Original: "${repliedMessage.content.substring(0, 100)}${repliedMessage.content.length > 100 ? '...' : ''}"
+    Reply: "${message.content.substring(0, 100)}${message.content.length > 100 ? '...' : ''}"`);
+                        
+                        // Combine the original message and reply for context
+                        prompt = `Previous message: "${repliedMessage.content}"\nUser's reply: "${message.content}"`;
+                    }
+                } catch (error) {
+                    console.error('Error fetching replied message:', error);
+                }
+            }
+
+            // If no valid reply context was set, use the message content directly
+            if (!prompt) {
+                prompt = message.content;
+            }
+
             // Replace mentions in the prompt with usernames
-            const processedPrompt = await replaceUserMentions(message.content, message);
+            const processedPrompt = await replaceUserMentions(prompt, message);
 
             // Check if message contains an image
             if (message.attachments.size > 0) {
