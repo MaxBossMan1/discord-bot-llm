@@ -2,7 +2,8 @@ from flask import Flask, request, send_file, jsonify
 import os
 from threading import Lock
 import json
-from elevenlabs import Voice, VoiceSettings, generate, voices, set_api_key
+from elevenlabs import Voice, VoiceSettings, voices, set_api_key
+from elevenlabs.client import Client
 from dotenv import load_dotenv
 import tempfile
 
@@ -40,11 +41,11 @@ def clone_voice():
             
             # Clone the voice using ElevenLabs
             with model_lock:
-                voice = Voice.clone(
+                client = Client(api_key=ELEVENLABS_API_KEY)
+                voice = client.clone_voice(
                     name=name,
                     files=[temp_file.name],
-                    description="Custom cloned voice",
-                    settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
+                    description="Custom cloned voice"
                 )
         
         # Clean up the temporary file
@@ -61,7 +62,8 @@ def clone_voice():
 @app.route('/tts/voices', methods=['GET'])
 def list_voices():
     try:
-        available_voices = voices()
+        client = Client(api_key=ELEVENLABS_API_KEY)
+        available_voices = client.voices.get_all()
         voice_list = [{"voice_id": v.voice_id, "name": v.name} for v in available_voices]
         return jsonify(voice_list)
     except Exception as e:
@@ -80,11 +82,12 @@ def text_to_speech():
         # Use a lock to prevent concurrent API calls
         with model_lock:
             # Generate audio using ElevenLabs
-            audio = generate(
+            client = Client(api_key=ELEVENLABS_API_KEY)
+            audio = client.generate(
                 text=text,
-                voice=voice_id if voice_id else "Rachel",
-                model="eleven_monolingual_v1",
-                settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
+                voice_id=voice_id if voice_id else "21m00Tcm4TlvDq8ikWAM",  # Rachel's voice ID
+                model_id="eleven_monolingual_v1",
+                voice_settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
             )
             
             # Save to a temporary file
