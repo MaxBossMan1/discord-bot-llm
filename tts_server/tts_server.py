@@ -2,8 +2,7 @@ from flask import Flask, request, send_file, jsonify
 import os
 from threading import Lock
 import json
-from elevenlabs import generate, clone, voices, set_api_key
-from elevenlabs.api import History
+from elevenlabs import Voice, VoiceClone, VoiceSettings, generate, voices, set_api_key
 from dotenv import load_dotenv
 import tempfile
 
@@ -41,9 +40,11 @@ def clone_voice():
             
             # Clone the voice using ElevenLabs
             with model_lock:
-                voice = clone(
+                voice = Voice.clone(
                     name=name,
-                    files=[temp_file.name]
+                    files=[temp_file.name],
+                    description="Custom cloned voice",
+                    settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
                 )
         
         # Clean up the temporary file
@@ -82,7 +83,8 @@ def text_to_speech():
             audio = generate(
                 text=text,
                 voice=voice_id if voice_id else "Rachel",
-                model="eleven_monolingual_v1"
+                model="eleven_monolingual_v1",
+                settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
             )
             
             # Save to a temporary file
