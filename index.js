@@ -279,37 +279,8 @@ async function processText(prompt, userId, message) {
             }
         }
 
-        // Add random formatting and emojis
-        const formats = [
-            (text) => `**${text}**`,  // Bold
-            (text) => `*${text}*`,    // Italic
-            (text) => `__${text}__`,  // Underline
-            (text) => `> ${text}`,    // Quote
-            (text) => text            // No format
-        ];
-
-        const emojis = ['😈', '🤪', '💀', '🔥', '😱', '🤡', '👻', '🧠', '🤖', '👀', '🎭', '🌟', '💫', '⚡', '💢', '💭', '🗯️', '💬'];
-        
-        // Split into sentences and format each differently
-        const sentences = content.match(/[^.!?]+[.!?]+/g) || [content];
-        content = sentences.map(sentence => {
-            // 70% chance to add format
-            const format = Math.random() < 0.7 ? formats[Math.floor(Math.random() * formats.length)] : (text => text);
-            // 50% chance to add emoji at start, 50% at end
-            const startEmoji = Math.random() < 0.5 ? emojis[Math.floor(Math.random() * emojis.length)] + ' ' : '';
-            const endEmoji = Math.random() < 0.5 ? ' ' + emojis[Math.floor(Math.random() * emojis.length)] : '';
-            return startEmoji + format(sentence.trim()) + endEmoji;
-        }).join(' ');
-
-        // 30% chance to add a random member mention
-        if (message && Math.random() < 0.3) {
-            const guild = message.guild;
-            const members = Array.from(guild.members.cache.values());
-            const randomMember = members[Math.floor(Math.random() * members.length)];
-            if (randomMember && !randomMember.user.bot) {
-                content += ` Hey <@${randomMember.id}>, what do you think about this? 🤔`;
-            }
-        }
+        // No formatting or emojis, just return the content as is
+        content = content.trim();
         
         return content || 'No valid response generated';
     } catch (error) {
