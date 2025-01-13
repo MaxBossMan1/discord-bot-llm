@@ -1,23 +1,29 @@
 from flask import Flask, request, send_file, jsonify
-import torch
-from TTS.api import TTS
 import os
 from threading import Lock
 import json
+from elevenlabs import generate, clone, voices, set_api_key
+from elevenlabs.api import History
+from dotenv import load_dotenv
+import tempfile
 
 app = Flask(__name__)
 model_lock = Lock()
+
+# Load environment variables
+load_dotenv()
+ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
+
+if not ELEVENLABS_API_KEY:
+    raise ValueError("ELEVENLABS_API_KEY environment variable is not set")
+
+set_api_key(ELEVENLABS_API_KEY)
 
 # Directory for storing voice references
 VOICE_DIR = os.path.join(os.path.dirname(__file__), "voice_references")
 os.makedirs(VOICE_DIR, exist_ok=True)
 
-print("Loading TTS model...")
-tts = TTS(model_name="tts_models/multilingual/multi-dataset/your_tts", progress_bar=False)
-print("TTS model loaded successfully!")
-
-# Store voice embeddings
-voice_embeddings = {}
+print("ElevenLabs TTS initialized successfully!")
 
 @app.route('/tts/clone_voice', methods=['POST'])
 def clone_voice():
@@ -26,64 +32,75 @@ def clone_voice():
             return 'No audio file provided', 400
         
         voice_id = request.form.get('voice_id', 'default')
+        name = request.form.get('name', voice_id)
         audio_file = request.files['audio']
         
-        # Save the reference audio
-        ref_path = os.path.join(VOICE_DIR, f"{voice_id}_ref.wav")
-        audio_file.save(ref_path)
+        # Save the reference audio temporarily
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+            audio_file.save(temp_file.name)
+            
+            # Clone the voice using ElevenLabs
+            with model_lock:
+                voice = clone(
+                    name=name,
+                    files=[temp_file.name]
+                )
         
-        # Generate and save speaker embedding
-        with model_lock:
-            speaker_embedding = tts.synthesizer.tts_model.speaker_manager.compute_embedding_from_clip(ref_path)
-            voice_embeddings[voice_id] = speaker_embedding
+        # Clean up the temporary file
+        os.unlink(temp_file.name)
         
-        return jsonify({"message": f"Voice {voice_id} cloned successfully"})
+        return jsonify({
+            "message": f"Voice {name} cloned successfully",
+            "voice_id": voice.voice_id
+        })
     except Exception as e:
         print(f"Error in voice cloning: {str(e)}")
         return str(e), 500
 
 @app.route('/tts/voices', methods=['GET'])
 def list_voices():
-    return jsonify(list(voice_embeddings.keys()))
+    try:
+        available_voices = voices()
+        voice_list = [{"voice_id": v.voice_id, "name": v.name} for v in available_voices]
+        return jsonify(voice_list)
+    except Exception as e:
+        print(f"Error listing voices: {str(e)}")
+        return str(e), 500
 
 @app.route('/tts/', methods=['POST'])
 def text_to_speech():
     try:
         text = request.form.get('text', '')
-        voice_id = request.form.get('voice_id', 'default')
+        voice_id = request.form.get('voice_id')
         
         if not text:
             return 'No text provided', 400
 
-        # Use a lock to prevent concurrent model inference
+        # Use a lock to prevent concurrent API calls
         with model_lock:
-            speaker_embedding = voice_embeddings.get(voice_id)
+            # Generate audio using ElevenLabs
+            audio = generate(
+                text=text,
+                voice=voice_id if voice_id else "Rachel",
+                model="eleven_monolingual_v1"
+            )
             
-            output_path = os.path.join(os.path.dirname(__file__), "temp_audio.wav")
+            # Save to a temporary file
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+                temp_file.write(audio)
+                output_path = temp_file.name
             
-            if speaker_embedding is not None:
-                # Use cloned voice
-                tts.tts_to_file(
-                    text=text,
-                    file_path=output_path,
-                    speaker_wav=os.path.join(VOICE_DIR, f"{voice_id}_ref.wav"),
-                    language="en"
-                )
-            else:
-                # Use default voice
-                tts.tts_to_file(
-                    text=text,
-                    file_path=output_path,
-                    speaker_wav=None,
-                    language="en"
-                )
-            
-            return send_file(
+            response = send_file(
                 output_path,
                 mimetype="audio/wav",
                 as_attachment=True,
                 download_name="speech.wav"
             )
+            
+            # Clean up the temporary file after sending
+            os.unlink(output_path)
+            
+            return response
     except Exception as e:
         print(f"Error in TTS: {str(e)}")
         return str(e), 500
