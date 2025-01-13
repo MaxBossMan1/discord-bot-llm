@@ -160,17 +160,27 @@ class DiscordBot {
             return;
         }
 
-        // Check if message mentions the bot or passes random chance
-        const randomChance = Math.random();
-        const shouldRespond = message.mentions.has(this.client.user) || randomChance < 0.3;
+        // First check for direct mentions
+        const isMentioned = message.mentions.has(this.client.user);
+        let shouldRespond = false;
+        let responseReason = '';
+
+        if (isMentioned) {
+            shouldRespond = true;
+            responseReason = 'bot mentioned';
+        } else {
+            // If not mentioned, use random chance
+            const randomChance = Math.random();
+            shouldRespond = randomChance < 0.3;
+            responseReason = shouldRespond ? 'random chance' : 'skipped (random)';
+        }
         
         console.log(`[Message Response] User: ${message.author.username}, Content: "${message.content.substring(0, 50)}${message.content.length > 50 ? '...' : ''}"
-    - Mentioned bot: ${message.mentions.has(this.client.user)}
-    - Random chance: ${randomChance.toFixed(4)} (threshold: 0.3)
-    - Will respond: ${shouldRespond}`);
+    - Mentioned bot: ${isMentioned}
+    ${!isMentioned ? `    - Random chance: ${randomChance.toFixed(4)} (threshold: 0.3)` : ''}
+    - Will respond: ${shouldRespond} (${responseReason})`);
 
         if (!shouldRespond) {
-            console.log('  → Skipping message due to random chance');
             return;
         }
 
