@@ -1,0 +1,7 @@
+{
+    "DISCORD_TOKEN": "",
+    "MSTY_API_URL": "http://localhost:1234",
+    "TARGET_GUILD_ID": "",
+    "TARGET_CHANNEL_ID": "",
+    "MEMORY_LIMIT": 10
+}
