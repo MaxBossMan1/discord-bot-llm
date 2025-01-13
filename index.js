@@ -5,7 +5,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 // Load configuration
-const config = require('./config.json');
+let config;
+try {
+    config = require('./config.json');
+} catch (error) {
+    console.error('Error loading config.json. Please copy config.sample.json to config.json and fill in your settings.');
+    process.exit(1);
+}
 
 // Initialize Bing Search headers
 const bingHeaders = {
@@ -82,15 +88,6 @@ function countTokens(text) {
 
 // Maximum tokens for context (leaving room for response)
 const MAX_CONTEXT_TOKENS = 2048;
-
-// Load configuration
-let config;
-try {
-    config = require('./config.json');
-} catch (error) {
-    console.error('Error loading config.json. Please copy config.sample.json to config.json and fill in your settings.');
-    process.exit(1);
-}
 
 const client = new Client({
     intents: [
