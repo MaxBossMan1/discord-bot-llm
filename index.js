@@ -4,15 +4,13 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { BingChat } = require('bing-chat');
-
 // Load configuration
 const config = require('./config.json');
 
-// Initialize Bing Chat
-const bingChat = new BingChat({
-    cookie: config.BING_COOKIE
-});
+// Initialize Bing Search headers
+const bingHeaders = {
+    'Ocp-Apim-Subscription-Key': config.BING_API_KEY
+};
 
 // Fun command handlers
 const funCommands = {
@@ -45,11 +43,30 @@ const funCommands = {
 // Bing search function
 async function bingSearch(query) {
     try {
-        const response = await bingChat.sendMessage(query);
-        return response.text;
+        const response = await axios.get(config.BING_ENDPOINT, {
+            headers: bingHeaders,
+            params: {
+                q: query,
+                count: 5,
+                responseFilter: 'Webpages,News',
+                textFormat: 'HTML'
+            }
+        });
+
+        const results = response.data.webPages?.value || [];
+        if (results.length === 0) {
+            return "Sorry, I couldn't find any results for that query.";
+        }
+
+        // Format the results
+        const formattedResults = results.map((result, index) => {
+            return `${index + 1}. **${result.name}**\n${result.snippet}\n${result.url}\n`;
+        }).join('\n');
+
+        return `Here's what I found:\n\n${formattedResults}`;
     } catch (error) {
         console.error('Bing search error:', error);
-        return "Sorry, I couldn't perform the search right now.";
+        return "Sorry, I couldn't perform the search right now. Make sure the Bing API key is configured correctly.";
     }
 }
 

@@ -20,11 +20,19 @@ cp config.sample.json config.json
     "TARGET_CHANNEL_ID": "your-channel-id",
     "VOICE_CHANNEL_ID": "your-voice-channel-id",
     "MEMORY_LIMIT": 10,
-    "BING_COOKIE": "your-bing-cookie-here"
+    "BING_API_KEY": "your-bing-api-key-here",
+    "BING_ENDPOINT": "https://api.bing.microsoft.com/v7.0/search"
 }
 ```
 
-4. Make sure your Msty server is running and accessible at the URL specified in your config.json
+4. Get your Bing Web Search API key:
+   - Go to the [Azure Portal](https://portal.azure.com)
+   - Create a new Bing Web Search resource or use an existing one
+   - Go to "Keys and Endpoint" section
+   - Copy one of the keys and the endpoint
+   - Add them to your config.json
+
+5. Make sure your Msty server is running and accessible at the URL specified in your config.json
 
 5. Start everything with a single command:
 ```bash
@@ -133,7 +141,8 @@ Here are some features planned for future updates:
 - `TARGET_CHANNEL_ID`: The channel ID to monitor
 - `VOICE_CHANNEL_ID`: The voice channel ID for TTS
 - `MEMORY_LIMIT`: Number of messages to remember per user
-- `BING_COOKIE`: Your Bing cookie for web search functionality
+- `BING_API_KEY`: Your Bing Web Search API key from Azure Portal
+- `BING_ENDPOINT`: Bing Web Search API endpoint (default is v7.0)
 
 ### Response Settings (in index.js)
 - Response chance: 30% for normal messages
