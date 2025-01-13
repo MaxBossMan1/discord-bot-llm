@@ -1,7 +1,7 @@
 from flask import Flask, request, send_file, jsonify
 import os
 from threading import Lock
-from elevenlabs import generate, voices, set_api_key
+from elevenlabs import Voice, generate_and_play, generate_and_stream, generate_and_save, voices, set_api_key
 from dotenv import load_dotenv
 import tempfile
 
@@ -40,16 +40,13 @@ def text_to_speech():
         # Use a lock to prevent concurrent API calls
         with model_lock:
             # Generate audio using ElevenLabs
-            audio = generate(
+            output_path = os.path.join(tempfile.gettempdir(), "speech.wav")
+            generate_and_save(
                 text=text,
                 voice=voice_id,
-                model="eleven_monolingual_v1"
+                model="eleven_monolingual_v1",
+                filename=output_path
             )
-            
-            # Save to a temporary file
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-                temp_file.write(audio)
-                output_path = temp_file.name
             
             response = send_file(
                 output_path,
