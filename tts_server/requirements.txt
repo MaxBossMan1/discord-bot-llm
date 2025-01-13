@@ -3,5 +3,6 @@ numpy
 torch
 torchaudio
 soundfile
-transformers
-datasets
+TTS
+scipy
+unidecode
