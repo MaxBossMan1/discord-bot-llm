@@ -1,9 +1,7 @@
 from flask import Flask, request, send_file, jsonify
 import os
 from threading import Lock
-import json
-from elevenlabs import Voice, VoiceSettings, voices, set_api_key
-from elevenlabs.client import Client
+from elevenlabs import generate, voices, set_api_key
 from dotenv import load_dotenv
 import tempfile
 
@@ -18,52 +16,12 @@ if not ELEVENLABS_API_KEY:
     raise ValueError("ELEVENLABS_API_KEY environment variable is not set")
 
 set_api_key(ELEVENLABS_API_KEY)
-
-# Directory for storing voice references
-VOICE_DIR = os.path.join(os.path.dirname(__file__), "voice_references")
-os.makedirs(VOICE_DIR, exist_ok=True)
-
 print("ElevenLabs TTS initialized successfully!")
-
-@app.route('/tts/clone_voice', methods=['POST'])
-def clone_voice():
-    try:
-        if 'audio' not in request.files:
-            return 'No audio file provided', 400
-        
-        voice_id = request.form.get('voice_id', 'default')
-        name = request.form.get('name', voice_id)
-        audio_file = request.files['audio']
-        
-        # Save the reference audio temporarily
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-            audio_file.save(temp_file.name)
-            
-            # Clone the voice using ElevenLabs
-            with model_lock:
-                client = Client(api_key=ELEVENLABS_API_KEY)
-                voice = client.clone_voice(
-                    name=name,
-                    files=[temp_file.name],
-                    description="Custom cloned voice"
-                )
-        
-        # Clean up the temporary file
-        os.unlink(temp_file.name)
-        
-        return jsonify({
-            "message": f"Voice {name} cloned successfully",
-            "voice_id": voice.voice_id
-        })
-    except Exception as e:
-        print(f"Error in voice cloning: {str(e)}")
-        return str(e), 500
 
 @app.route('/tts/voices', methods=['GET'])
 def list_voices():
     try:
-        client = Client(api_key=ELEVENLABS_API_KEY)
-        available_voices = client.voices.get_all()
+        available_voices = voices()
         voice_list = [{"voice_id": v.voice_id, "name": v.name} for v in available_voices]
         return jsonify(voice_list)
     except Exception as e:
@@ -74,7 +32,7 @@ def list_voices():
 def text_to_speech():
     try:
         text = request.form.get('text', '')
-        voice_id = request.form.get('voice_id')
+        voice_id = request.form.get('voice_id', 'Rachel')
         
         if not text:
             return 'No text provided', 400
@@ -82,12 +40,10 @@ def text_to_speech():
         # Use a lock to prevent concurrent API calls
         with model_lock:
             # Generate audio using ElevenLabs
-            client = Client(api_key=ELEVENLABS_API_KEY)
-            audio = client.generate(
+            audio = generate(
                 text=text,
-                voice_id=voice_id if voice_id else "21m00Tcm4TlvDq8ikWAM",  # Rachel's voice ID
-                model_id="eleven_monolingual_v1",
-                voice_settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
+                voice=voice_id,
+                model="eleven_monolingual_v1"
             )
             
             # Save to a temporary file
