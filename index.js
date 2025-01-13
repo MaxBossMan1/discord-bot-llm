@@ -593,13 +593,16 @@ client.on('interactionCreate', async interaction => {
                 await interaction.deferReply();
 
                 try {
+                    const FormData = require('form-data');
                     const formData = new FormData();
                     formData.append('voice_id', name);
                     
                     // Download the audio file
                     const audioResponse = await axios.get(audio.url, { responseType: 'arraybuffer' });
-                    const audioBlob = new Blob([Buffer.from(audioResponse.data)], { type: audio.contentType });
-                    formData.append('audio', audioBlob, 'voice.wav');
+                    formData.append('audio', Buffer.from(audioResponse.data), {
+                        filename: 'voice.wav',
+                        contentType: audio.contentType
+                    });
 
                     // Send to TTS server
                     await axios.post('http://localhost:8000/tts/clone_voice', formData, {
