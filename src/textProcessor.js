@@ -7,7 +7,7 @@ class TextProcessor {
         this.memoryManager = memoryManager;
     }
 
-    async processText(prompt, userId, message) {
+    async processText(prompt, userId, message, username = 'user') {
         try {
             const history = this.memoryManager.getConversationHistory(userId) || [];
             
@@ -25,7 +25,7 @@ class TextProcessor {
             const messages = [
                 { 
                     role: 'system', 
-                    content: systemPrompt + "\nIMPORTANT: Your response MUST be limited to maximum 2 paragraphs." 
+                    content: systemPrompt.replace(/\{\{User\}\}/g, username) + "\nIMPORTANT: Your response MUST be limited to maximum 2 paragraphs." 
                 }
             ];
 

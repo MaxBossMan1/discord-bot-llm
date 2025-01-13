@@ -197,7 +197,7 @@ class DiscordBot {
                     );
                 }
             } else {
-                response = await this.textProcessor.processText(processedPrompt, message.author.id, message);
+                response = await this.textProcessor.processText(processedPrompt, message.author.id, message, message.author.username);
             }
 
             // Add the interaction to memory with processed mentions
@@ -236,46 +236,111 @@ class DiscordBot {
     }
 
     setupRandomMessageTimer() {
-        // Random message timer
-        setInterval(async () => {
-            try {
-                // 60% chance every 3 hours
-                if (Math.random() < 0.6) {
-                    const guild = this.client.guilds.cache.get(config.TARGET_GUILD_ID);
-                    const channel = guild.channels.cache.get(config.TARGET_CHANNEL_ID);
+        const { randomMessageConfig } = require('./config');
+        let lastMessageTime = Date.now();
 
-                    // Get random member
-                    const members = await guild.members.fetch();
-                    const randomMember = members.random();
+        const getRandomPrompt = (member) => {
+            const prompts = [
+                // Existential and philosophical
+                `Hey <@${member.id}>, what's your opinion on existential dread?`,
+                `<@${member.id}> Do you ever wonder if we're all just living in a simulation?`,
+                `<@${member.id}>, if you could know the absolute truth about one thing, what would it be?`,
+                `*contemplates existence* <@${member.id}>, what's your take on parallel universes?`,
 
-                    // Generate random prompt
-                    const prompts = [
-                        `Hey <@${randomMember.id}>, what's your opinion on existential dread?`,
-                        `*stares intensely at <@${randomMember.id}>* You remind me of someone I used to know...`,
-                        `<@${randomMember.id}> WAKE UP WAKE UP WAKE UP`,
-                        `I've been watching <@${randomMember.id}>'s messages... interesting patterns...`,
-                        `<@${randomMember.id}> Do you ever wonder if we're all just living in a simulation?`,
-                        `*whispers* <@${randomMember.id}> I know what you did...`,
-                        `BREAKING NEWS: <@${randomMember.id}> has been chosen for the experiment!`,
-                        `<@${randomMember.id}> I had a dream about you last night... it was... disturbing.`,
-                        `*starts twitching* <@${randomMember.id}> THE VOICES ARE GETTING LOUDER`,
-                        `<@${randomMember.id}> Quick! What's your favorite conspiracy theory?`
-                    ];
+                // Creepy and unsettling
+                `*stares intensely at <@${member.id}>* You remind me of someone I used to know...`,
+                `*whispers* <@${member.id}> I know what you did...`,
+                `<@${member.id}> I had a dream about you last night... it was... disturbing.`,
+                `I've been watching <@${member.id}>'s messages... interesting patterns...`,
 
-                    const response = await this.textProcessor.processText(prompts[Math.floor(Math.random() * prompts.length)], this.client.user.id, null);
-                    await channel.send({
-                        content: response,
-                        allowedMentions: { parse: ['users'] }
-                    });
+                // Chaotic and random
+                `<@${member.id}> WAKE UP WAKE UP WAKE UP`,
+                `*starts twitching* <@${member.id}> THE VOICES ARE GETTING LOUDER`,
+                `BREAKING NEWS: <@${member.id}> has been chosen for the experiment!`,
+                `<@${member.id}> QUICK! The aliens are coming! What's your favorite cheese?!`,
 
-                    if (this.ttsHandler.isEnabled()) {
-                        await this.ttsHandler.speak(response);
+                // Conspiracy and paranormal
+                `<@${member.id}> Quick! What's your favorite conspiracy theory?`,
+                `<@${member.id}>, have you ever seen a ghost? Or are YOU the ghost? *X-Files theme plays*`,
+                `*adjusts tinfoil hat* <@${member.id}>, the lizard people are watching us!`,
+                `<@${member.id}>, what's your take on bigfoot's cryptocurrency investments?`,
+
+                // Random challenges
+                `<@${member.id}>, I challenge you to speak in only emojis for the next hour!`,
+                `ATTENTION <@${member.id}>! You must now explain quantum physics using only memes!`,
+                `<@${member.id}>, quick! Explain why pizza is round but comes in a square box!`,
+                `*dramatic pose* <@${member.id}>, defend your position on pineapple on pizza!`,
+
+                // Personal and intrusive
+                `<@${member.id}>, what's the weirdest dream you've ever had?`,
+                `*reads your browser history* Interesting choices, <@${member.id}>... very interesting...`,
+                `<@${member.id}>, if your pet could talk, what secrets would they reveal?`,
+                `*scans brain waves* <@${member.id}>, why were you thinking about THAT?`,
+
+                // Time-based
+                `<@${member.id}>, what were you doing exactly 3 years, 2 months, 15 days, 7 hours and 23 seconds ago?`,
+                `<@${member.id}>, in an alternate timeline, you're currently a professional kazoo player. How's that going?`,
+                `*checks interdimensional calendar* <@${member.id}>, according to my calculations, you're late for something in dimension C-137!`,
+
+                // Absurd scenarios
+                `<@${member.id}>, if you had to fight 100 duck-sized horses or 1 horse-sized duck, which would you choose?`,
+                `EMERGENCY SCENARIO: <@${member.id}>, the world's supply of socks has vanished! What's your solution?`,
+                `<@${member.id}>, you've been chosen to be the first human to telepathically communicate with houseplants. What's your first message?`,
+                `*breaks fourth wall* <@${member.id}>, have you noticed we're all just characters in a cosmic Discord bot's fever dream?`
+            ];
+            return prompts[Math.floor(Math.random() * prompts.length)];
+        };
+
+        const scheduleNextMessage = () => {
+            const baseMs = randomMessageConfig.baseInterval * 60 * 1000;
+            const randomMs = Math.floor(Math.random() * randomMessageConfig.randomInterval * 60 * 1000);
+            const nextInterval = baseMs + randomMs;
+            
+            setTimeout(async () => {
+                try {
+                    const now = Date.now();
+                    const timeSinceLastMessage = now - lastMessageTime;
+                    const minTimeMs = randomMessageConfig.minTimeBetweenMessages * 60 * 1000;
+
+                    if (timeSinceLastMessage >= minTimeMs && Math.random() < randomMessageConfig.triggerChance) {
+                        const guild = this.client.guilds.cache.get(config.TARGET_GUILD_ID);
+                        const channel = guild.channels.cache.get(config.TARGET_CHANNEL_ID);
+
+                        // Get random member, excluding bots
+                        const members = (await guild.members.fetch()).filter(member => !member.user.bot);
+                        const randomMember = members.random();
+
+                        if (randomMember) {
+                            const prompt = getRandomPrompt(randomMember);
+                            const response = await this.textProcessor.processText(
+                                prompt,
+                                this.client.user.id,
+                                null,
+                                randomMember.user.username
+                            );
+
+                            await channel.send({
+                                content: response,
+                                allowedMentions: { parse: ['users'] }
+                            });
+
+                            if (this.ttsHandler.isEnabled()) {
+                                await this.ttsHandler.speak(response);
+                            }
+
+                            lastMessageTime = now;
+                        }
                     }
+                } catch (error) {
+                    console.error('Error in random message timer:', error);
+                } finally {
+                    scheduleNextMessage();
                 }
-            } catch (error) {
-                console.error('Error in random message timer:', error);
-            }
-        }, 3 * 60 * 60 * 1000); // 3 hours
+            }, nextInterval);
+        };
+
+        // Start the timer
+        scheduleNextMessage();
     }
 
     start() {

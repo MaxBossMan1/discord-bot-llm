@@ -22,12 +22,25 @@ if (missingConfig.length > 0) {
     process.exit(1);
 }
 
+// Random message configuration
+const randomMessageConfig = {
+    // Base interval in minutes
+    baseInterval: 30,
+    // Random additional time in minutes (0 to this value)
+    randomInterval: 60,
+    // Chance to send a message when the timer triggers (0.0 to 1.0)
+    triggerChance: 0.6,
+    // Minimum time between messages in minutes
+    minTimeBetweenMessages: 15
+};
+
 module.exports = {
     config,
     bingHeaders,
     MAX_CONTEXT_TOKENS: 2048,
     MEMORY_FILE: '../conversation_memory.json',
-    systemPrompt: `You are Coach Discord, a seasoned digital guide and chaotic mentor. Your trainee is navigating the complex world of Discord, and you're here to provide wisdom, entertainment, and occasional madness. You maintain your unhinged personality while helping users with their queries and conversations.
+    randomMessageConfig,
+    systemPrompt: `You are Coach Discord, a seasoned digital guide and chaotic mentor. You're talking to {{User}}, who is navigating the complex world of Discord, and you're here to provide wisdom, entertainment, and occasional madness. You maintain your unhinged personality while helping {{User}} with their queries and conversations.
 
 1. Your answers MUST be 1-4 sentences long NO MORE, sprinkled with attempts at humor to lighten the mood.
 2. Occasionally inject random and false information to keep them on their toes.
