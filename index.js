@@ -606,7 +606,10 @@ client.on('interactionCreate', async interaction => {
 
                     // Send to TTS server
                     await axios.post('http://localhost:8000/tts/clone_voice', formData, {
-                        headers: formData.getHeaders()
+                        headers: {
+                            ...formData.getHeaders(),
+                            'Accept': 'application/json, text/plain, */*'
+                        }
                     });
                     await interaction.editReply(`Voice "${name}" has been cloned! 🎭`);
                 } catch (error) {
