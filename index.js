@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const TTSHandler = require('./tts_handler');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -31,9 +32,12 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates,
     ],
     partials: [Partials.Channel]
 });
+
+const ttsHandler = new TTSHandler();
 
 // Conversation memory system
 const MEMORY_FILE = './conversation_memory.json';
@@ -337,9 +341,19 @@ async function processImage(attachment, prompt, userId, message) {
     }
 }
 
-client.on('ready', () => {
+client.on('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     loadMemoryFromFile();
+
+    // Connect to voice channel
+    const guild = client.guilds.cache.get(config.TARGET_GUILD_ID);
+    if (guild) {
+        const voiceChannel = guild.channels.cache.get(config.VOICE_CHANNEL_ID);
+        if (voiceChannel) {
+            await ttsHandler.connectToChannel(voiceChannel);
+            console.log('Connected to voice channel:', voiceChannel.name);
+        }
+    }
 });
 
 client.on('messageCreate', async message => {
@@ -390,6 +404,9 @@ client.on('messageCreate', async message => {
 
         // Add the interaction to memory with processed mentions
         addToConversationHistory(message.author.id, processedPrompt, response);
+
+        // Speak the response in voice channel
+        await ttsHandler.speak(response);
 
         // Split response into chunks if it's too long and send as replies
         const MAX_LENGTH = 2000;
