@@ -2,6 +2,20 @@ const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+// Simple token counter (approximation)
+function countTokens(text) {
+    // Handle null/undefined text
+    if (!text) return 0;
+    // Convert to string in case of numbers or other types
+    const str = String(text);
+    // Rough approximation: 1 token ≈ 4 characters for English text
+    return Math.ceil(str.length / 4);
+}
+
+// Maximum tokens for context (leaving room for response)
+const MAX_CONTEXT_TOKENS = 2048;
 
 // Load configuration
 let config;
@@ -21,8 +35,47 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-// Simple memory system using a Map
-const conversationMemory = new Map();
+// Conversation memory system
+const MEMORY_FILE = './conversation_memory.json';
+let conversationMemory = new Map();
+
+// Load memory from file if it exists
+function loadMemoryFromFile() {
+    try {
+        if (fs.existsSync(MEMORY_FILE)) {
+            const data = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
+            conversationMemory = new Map(Object.entries(data).map(([key, value]) => {
+                const memory = new UserMemory();
+                Object.assign(memory, value);
+                return [key, memory];
+            }));
+            console.log('Memory loaded from file');
+        }
+    } catch (error) {
+        console.error('Error loading memory:', error);
+    }
+}
+
+// Save memory to file
+function saveMemoryToFile() {
+    try {
+        const data = Object.fromEntries(conversationMemory);
+        fs.writeFileSync(MEMORY_FILE, JSON.stringify(data, null, 2));
+    } catch (error) {
+        console.error('Error saving memory:', error);
+    }
+}
+
+// Save memory periodically (every 5 minutes)
+setInterval(saveMemoryToFile, 5 * 60 * 1000);
+
+// Memory structure for each user
+class UserMemory {
+    constructor() {
+        this.conversations = [];  // Array of {user: string, assistant: string} pairs
+        this.lastInteraction = Date.now();
+    }
+}
 
 const systemPrompt = `You are Coach Discord, a seasoned digital guide and chaotic mentor. Your trainee is navigating the complex world of Discord, and you're here to provide wisdom, entertainment, and occasional madness. You maintain your unhinged personality while helping users with their queries and conversations.
 
@@ -46,97 +99,238 @@ const systemPrompt = `You are Coach Discord, a seasoned digital guide and chaoti
 // Function to get conversation history for a user
 function getConversationHistory(userId) {
     if (!conversationMemory.has(userId)) {
-        conversationMemory.set(userId, []);
+        conversationMemory.set(userId, new UserMemory());
     }
-    return conversationMemory.get(userId);
+    const memory = conversationMemory.get(userId);
+    
+    // Build history while respecting token limit
+    let totalTokens = countTokens(systemPrompt);
+    const usableHistory = [];
+    
+    // Start from most recent conversations
+    for (let i = memory.conversations.length - 1; i >= 0; i--) {
+        const conv = memory.conversations[i];
+        const convTokens = countTokens(conv.user) + countTokens(conv.assistant);
+        
+        // If adding this conversation would exceed token limit, stop
+        if (totalTokens + convTokens > MAX_CONTEXT_TOKENS) {
+            break;
+        }
+        
+        totalTokens += convTokens;
+        usableHistory.unshift(conv);
+    }
+    
+    return usableHistory;
 }
 
-// Function to add a message to conversation history
-function addToConversationHistory(userId, message) {
-    const history = getConversationHistory(userId);
-    history.push(message);
-    if (history.length > config.MEMORY_LIMIT) {
-        history.shift();
+// Function to add a message pair to conversation history
+function addToConversationHistory(userId, userMessage, assistantMessage) {
+    if (!conversationMemory.has(userId)) {
+        conversationMemory.set(userId, new UserMemory());
     }
-    conversationMemory.set(userId, history);
+    const memory = conversationMemory.get(userId);
+    memory.conversations.push({ user: userMessage, assistant: assistantMessage });
+    memory.lastInteraction = Date.now();
+    
+    // Keep only the last N conversations
+    if (memory.conversations.length > config.MEMORY_LIMIT) {
+        memory.conversations.shift();
+    }
+}
+
+// Function to replace user mentions with usernames
+async function replaceUserMentions(text, message) {
+    if (!text) return text;
+    
+    // Replace <@ID> mentions with actual usernames
+    return text.replace(/<@!?(\d+)>/g, (match, id) => {
+        try {
+            const member = message.guild.members.cache.get(id);
+            return member ? `@${member.displayName}` : match;
+        } catch (error) {
+            console.error('Error getting username:', error);
+            return match;
+        }
+    });
 }
 
 // Function to process text with Llama2 Uncensored
-async function processText(prompt, userId) {
+async function processText(prompt, userId, message) {
     try {
-        const history = getConversationHistory(userId);
+        const history = getConversationHistory(userId) || [];
+        
+        // Calculate remaining tokens for response
+        const promptTokens = countTokens(prompt);
+        const historyTokens = history.reduce((sum, conv) => 
+            sum + countTokens(conv?.user || '') + countTokens(conv?.assistant || ''), 0);
+        const systemTokens = countTokens(systemPrompt);
+        const maxResponseTokens = Math.min(
+            1000,  // Increased limit to 1000 tokens
+            Math.max(200, MAX_CONTEXT_TOKENS - systemTokens - historyTokens - promptTokens)  // Ensure at least 200 tokens
+        );
+
+        // Build messages array with proper error handling
+        const messages = [
+            { 
+                role: 'system', 
+                content: systemPrompt + "\nIMPORTANT: Your response MUST be limited to maximum 2 paragraphs." 
+            }
+        ];
+
+        // Add history messages with proper error handling
+        for (const conv of history) {
+            if (conv?.user) messages.push({ role: 'user', content: conv.user });
+            if (conv?.assistant) messages.push({ role: 'assistant', content: conv.assistant });
+        }
+
+        // Add current prompt
+        if (prompt) messages.push({ role: 'user', content: prompt });
+        
         const response = await axios.post(`${config.MSTY_API_URL}/v1/chat/completions`, {
             model: 'mistral-nemo',
-            messages: [
-                { role: 'system', content: systemPrompt },
-                ...history.map((msg, index) => ({
-                    role: index % 2 === 0 ? 'user' : 'assistant',
-                    content: msg
-                })),
-                { role: 'user', content: prompt }
-            ],
-            max_tokens: 500,
+            messages,
+            max_tokens: maxResponseTokens,
             temperature: 0.9,
             presence_penalty: 0.6,
             frequency_penalty: 0.6
         });
-        return response.data.choices[0].message.content;
+        
+        if (!response.data?.choices?.[0]?.message?.content) {
+            console.error('Invalid response format:', response.data);
+            return 'Error: No valid response generated';
+        }
+
+        let content = response.data.choices[0].message.content;
+        
+        // Only truncate if it's going to exceed Discord's limit
+        if (content.length > 1900) {  // Leave room for quotes and formatting
+            const sentences = content.match(/[^.!?]+[.!?]+/g) || [];
+            content = sentences.slice(0, 4).join('').trim();  // Keep first 4 sentences
+            
+            if (content.length > 1900) {
+                content = content.substring(0, 1900) + '...';
+            }
+        }
+        
+        return content || 'No valid response generated';
     } catch (error) {
         console.error('Error processing text:', error);
+        if (error.response) {
+            console.error('API Response:', error.response.data);
+        }
         return 'FUCK! My brain broke! *screams in digital*';
     }
 }
 
 // Function to process images with LLaVA Phi3 and then process the description with Llama2
-async function processImage(imageUrl, prompt, userId) {
+async function processImage(attachment, prompt, userId, message) {
     try {
-        // First, get image description from LLaVA
-        const visionResponse = await axios.post(`${config.MSTY_API_URL}/v1/chat/completions`, {
-            model: 'llava-phi3',
-            messages: [
-                {
-                    role: 'user',
-                    content: [
+        // First, try to get image description from LLaVA
+        let imageDescription;
+        try {
+            // Create temp directory if it doesn't exist
+            const tempDir = path.join(__dirname, 'temp');
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir);
+            }
+
+            // Generate a random filename with extension from URL
+            const fileExt = attachment.url.split('.').pop().split('?')[0];
+            const tempFile = path.join(tempDir, `${crypto.randomBytes(16).toString('hex')}.${fileExt}`);
+            
+            console.log('Downloading attachment to:', tempFile);
+            
+            try {
+                // Download the attachment using axios
+                const response = await axios({
+                    method: 'get',
+                    url: attachment.url,
+                    responseType: 'arraybuffer',
+                    timeout: 5000
+                });
+                
+                // Save the file
+                fs.writeFileSync(tempFile, response.data);
+                
+                // Read the file and convert to base64
+                const imageBuffer = fs.readFileSync(tempFile);
+                const base64Image = imageBuffer.toString('base64');
+                
+                // Clean up the temp file
+                fs.unlinkSync(tempFile);
+
+                console.log('Successfully processed image, sending to vision API...');
+                
+                const visionResponse = await axios.post(`${config.MSTY_API_URL}/v1/chat/completions`, {
+                    model: 'llava-phi3',
+                    messages: [
                         {
-                            type: 'image_url',
-                            image_url: {
-                                url: imageUrl
-                            }
-                        },
-                        {
-                            type: 'text',
-                            text: 'Describe this image in detail, focusing on what you see.'
+                            role: 'user',
+                            content: [
+                                {
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: `data:${attachment.contentType};base64,${base64Image}`
+                                    }
+                                },
+                                {
+                                    type: 'text',
+                                    text: 'Describe this image in detail, focusing on what you see.'
+                                }
+                            ]
                         }
-                    ]
+                    ],
+                    max_tokens: 1000,
+                    temperature: 0.7,
+                    presence_penalty: 0.6,
+                    frequency_penalty: 0.6
+                });
+                
+                imageDescription = visionResponse.data?.choices?.[0]?.message?.content;
+                
+            } catch (error) {
+                console.error('Error processing image file:', error);
+                if (error.code === 'ECONNABORTED') {
+                    throw new Error('download_timeout');
+                } else if (error.response?.status === 404) {
+                    throw new Error('download_not_found');
+                } else {
+                    throw new Error('download_failed');
                 }
-            ],
-            max_tokens: 500,
-            temperature: 0.7
-        });
+            } finally {
+                // Clean up temp file if it exists
+                if (fs.existsSync(tempFile)) {
+                    try {
+                        fs.unlinkSync(tempFile);
+                    } catch (e) {
+                        console.error('Error cleaning up temp file:', e);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Vision API error:', error.response?.data || error.message);
+            // If vision API fails, provide more specific error message based on the error type
+            if (error.message === 'download_timeout') {
+                imageDescription = "FUCK! The image download timed out. Discord's being slower than my grandma's dial-up! *smashes virtual router*";
+            } else if (error.message === 'download_not_found') {
+                imageDescription = "The fuck? The image disappeared! Did Discord eat it or something? *searches through digital trash*";
+            } else if (error.message === 'download_failed') {
+                imageDescription = "SHIT! I couldn't download the image. Discord's being a little bitch right now. *kicks server repeatedly*";
+            } else if (error.message.includes('content type')) {
+                imageDescription = "Hold up! That doesn't look like an image to me. Are you trying to trick me? *suspicious glare*";
+            } else {
+                imageDescription = "I see an image, but I'm having trouble processing it right now. My vision circuits are a bit fuzzy. *rubs digital eyes*";
+            }
+        }
         
-        const imageDescription = visionResponse.data.choices[0].message.content;
-        
-        // Then, feed the description to Llama2 along with the original prompt
-        const history = getConversationHistory(userId);
-        const combinedPrompt = `I'm looking at an image. Here's what I see: ${imageDescription}\n\n${prompt || 'What do you think about this?'}`;
-        
-        const response = await axios.post(`${config.MSTY_API_URL}/v1/chat/completions`, {
-            model: 'llama2-uncensored',
-            messages: [
-                { role: 'system', content: systemPrompt },
-                ...history.map((msg, index) => ({
-                    role: index % 2 === 0 ? 'user' : 'assistant',
-                    content: msg
-                })),
-                { role: 'user', content: combinedPrompt }
-            ],
-            max_tokens: 500,
-            temperature: 0.9,
-            presence_penalty: 0.6,
-            frequency_penalty: 0.6
-        });
-        
-        return response.data.choices[0].message.content;
+        // Then, feed the description to the main model along with the original prompt
+        // Process the image description with the main model
+        return await processText(
+            `I'm looking at an image. Here's what I see: ${imageDescription}\n\n${prompt || 'What do you think about this?'}`,
+            userId,
+            message
+        );
     } catch (error) {
         console.error('Error processing image:', error);
         return 'HOLY SHIT! The image broke my eyes! *digital seizure*';
@@ -145,35 +339,57 @@ async function processImage(imageUrl, prompt, userId) {
 
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
+    loadMemoryFromFile();
 });
 
 client.on('messageCreate', async message => {
-    // Ignore messages from bots and messages not in the target channel/guild
+    // Ignore messages from bots, messages not in target channel/guild, and messages starting with "-"
     if (message.author.bot || 
         message.guildId !== config.TARGET_GUILD_ID || 
-        message.channelId !== config.TARGET_CHANNEL_ID) {
+        message.channelId !== config.TARGET_CHANNEL_ID ||
+        message.content.trim().startsWith('-')) {
         return;
     }
 
     try {
         let response;
+        // Replace mentions in the prompt with usernames
+        const processedPrompt = await replaceUserMentions(message.content, message);
+
         // Check if message contains an image
         if (message.attachments.size > 0) {
             const attachment = message.attachments.first();
-            if (attachment.contentType?.startsWith('image/')) {
+            
+            // Validate attachment
+            if (!attachment.contentType) {
+                response = "Hey fucknuts, that file doesn't have a content type! What kind of sketchy shit are you trying to pull? *narrows digital eyes*";
+            } else if (!attachment.contentType.startsWith('image/')) {
+                response = "That's not a fucking image! What, you think I can process your fancy " + 
+                    attachment.contentType.split('/')[1] + " files? Get outta here! *throws virtual chair*";
+            } else if (attachment.size > 10 * 1024 * 1024) { // 10MB limit
+                response = "Holy shit, that image is huge! I'm not downloading your 4K anime wallpapers, you weeb! Keep it under 10MB! *digital nose bleed*";
+            } else {
+                // Get the attachment directly from Discord
+                const attachmentUrl = attachment.proxyURL || attachment.url;
+                console.log('Processing image attachment:', {
+                    contentType: attachment.contentType,
+                    size: attachment.size,
+                    url: attachmentUrl
+                });
+                
                 response = await processImage(
-                    attachment.url,
-                    message.content || 'What do you see in this image?',
-                    message.author.id
+                    attachment,
+                    processedPrompt || 'What do you see in this image?',
+                    message.author.id,
+                    message
                 );
             }
         } else {
-            response = await processText(message.content, message.author.id);
+            response = await processText(processedPrompt, message.author.id, message);
         }
 
-        // Add the interaction to memory
-        addToConversationHistory(message.author.id, message.content);
-        addToConversationHistory(message.author.id, response);
+        // Add the interaction to memory with processed mentions
+        addToConversationHistory(message.author.id, processedPrompt, response);
 
         // Split response into chunks if it's too long and send as replies
         const MAX_LENGTH = 2000;
