@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, SlashCommandBuilder, REST, Routes } = require('discord.js');
 const TTSHandler = require('./tts_handler');
 const axios = require('axios');
 const fs = require('fs');
@@ -216,6 +216,38 @@ async function processText(prompt, userId, message) {
                 content = content.substring(0, 1900) + '...';
             }
         }
+
+        // Add random formatting and emojis
+        const formats = [
+            (text) => `**${text}**`,  // Bold
+            (text) => `*${text}*`,    // Italic
+            (text) => `__${text}__`,  // Underline
+            (text) => `> ${text}`,    // Quote
+            (text) => text            // No format
+        ];
+
+        const emojis = ['😈', '🤪', '💀', '🔥', '😱', '🤡', '👻', '🧠', '🤖', '👀', '🎭', '🌟', '💫', '⚡', '💢', '💭', '🗯️', '💬'];
+        
+        // Split into sentences and format each differently
+        const sentences = content.match(/[^.!?]+[.!?]+/g) || [content];
+        content = sentences.map(sentence => {
+            // 70% chance to add format
+            const format = Math.random() < 0.7 ? formats[Math.floor(Math.random() * formats.length)] : (text => text);
+            // 50% chance to add emoji at start, 50% at end
+            const startEmoji = Math.random() < 0.5 ? emojis[Math.floor(Math.random() * emojis.length)] + ' ' : '';
+            const endEmoji = Math.random() < 0.5 ? ' ' + emojis[Math.floor(Math.random() * emojis.length)] : '';
+            return startEmoji + format(sentence.trim()) + endEmoji;
+        }).join(' ');
+
+        // 30% chance to add a random member mention
+        if (message && Math.random() < 0.3) {
+            const guild = message.guild;
+            const members = Array.from(guild.members.cache.values());
+            const randomMember = members[Math.floor(Math.random() * members.length)];
+            if (randomMember && !randomMember.user.bot) {
+                content += ` Hey <@${randomMember.id}>, what do you think about this? 🤔`;
+            }
+        }
         
         return content || 'No valid response generated';
     } catch (error) {
@@ -341,9 +373,57 @@ async function processImage(attachment, prompt, userId, message) {
     }
 }
 
+// Register slash commands
+async function registerCommands() {
+    const commands = [
+        new SlashCommandBuilder()
+            .setName('tts')
+            .setDescription('Control TTS settings')
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('enable')
+                    .setDescription('Enable TTS'))
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('disable')
+                    .setDescription('Disable TTS'))
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('status')
+                    .setDescription('Check TTS status'))
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('clone')
+                    .setDescription('Clone a voice from an audio file')
+                    .addAttachmentOption(option =>
+                        option
+                            .setName('audio')
+                            .setDescription('Audio file to clone voice from (.wav file)')
+                            .setRequired(true))
+                    .addStringOption(option =>
+                        option
+                            .setName('name')
+                            .setDescription('Name for the cloned voice')
+                            .setRequired(true)))
+    ];
+
+    try {
+        console.log('Started refreshing application (/) commands.');
+        const rest = new REST().setToken(config.DISCORD_TOKEN);
+        await rest.put(
+            Routes.applicationGuildCommands(client.user.id, config.TARGET_GUILD_ID),
+            { body: commands },
+        );
+        console.log('Successfully reloaded application (/) commands.');
+    } catch (error) {
+        console.error(error);
+    }
+}
+
 client.on('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     loadMemoryFromFile();
+    await registerCommands();
 
     // Connect to voice channel
     const guild = client.guilds.cache.get(config.TARGET_GUILD_ID);
@@ -356,14 +436,113 @@ client.on('ready', async () => {
     }
 });
 
+// Handle slash commands
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'tts') {
+        const subcommand = interaction.options.getSubcommand();
+
+        switch (subcommand) {
+            case 'enable':
+                ttsHandler.enable();
+                await interaction.reply('TTS has been enabled! 🎙️');
+                break;
+            case 'disable':
+                ttsHandler.disable();
+                await interaction.reply('TTS has been disabled! 🔇');
+                break;
+            case 'status':
+                const status = ttsHandler.isEnabled() ? 'enabled' : 'disabled';
+                await interaction.reply(`TTS is currently ${status} 🎤`);
+                break;
+            case 'clone':
+                const audio = interaction.options.getAttachment('audio');
+                const name = interaction.options.getString('name');
+                
+                if (!audio.contentType?.startsWith('audio/')) {
+                    await interaction.reply('Please provide an audio file! 🎵');
+                    return;
+                }
+
+                await interaction.deferReply();
+
+                try {
+                    const formData = new FormData();
+                    formData.append('voice_id', name);
+                    
+                    // Download the audio file
+                    const audioResponse = await axios.get(audio.url, { responseType: 'arraybuffer' });
+                    formData.append('audio', Buffer.from(audioResponse.data), 'voice.wav');
+
+                    // Send to TTS server
+                    await axios.post('http://localhost:8000/tts/clone_voice', formData, {
+                        headers: formData.getHeaders()
+                    });
+
+                    await interaction.editReply(`Voice "${name}" has been cloned successfully! 🎭`);
+                } catch (error) {
+                    console.error('Error cloning voice:', error);
+                    await interaction.editReply('Failed to clone voice. Please try again later. 😢');
+                }
+                break;
+        }
+        return;
+    }
+});
+
+// Random message timer
+setInterval(async () => {
+    try {
+        // 60% chance every 3 hours
+        if (Math.random() < 0.6) {
+            const guild = client.guilds.cache.get(config.TARGET_GUILD_ID);
+            const channel = guild.channels.cache.get(config.TARGET_CHANNEL_ID);
+            
+            // Get random member
+            const members = await guild.members.fetch();
+            const randomMember = members.random();
+            
+            // Generate random prompt
+            const prompts = [
+                `Hey <@${randomMember.id}>, what's your opinion on existential dread?`,
+                `*stares intensely at <@${randomMember.id}>* You remind me of someone I used to know...`,
+                `<@${randomMember.id}> WAKE UP WAKE UP WAKE UP`,
+                `I've been watching <@${randomMember.id}>'s messages... interesting patterns...`,
+                `<@${randomMember.id}> Do you ever wonder if we're all just living in a simulation?`,
+                `*whispers* <@${randomMember.id}> I know what you did...`,
+                `BREAKING NEWS: <@${randomMember.id}> has been chosen for the experiment!`,
+                `<@${randomMember.id}> I had a dream about you last night... it was... disturbing.`,
+                `*starts twitching* <@${randomMember.id}> THE VOICES ARE GETTING LOUDER`,
+                `<@${randomMember.id}> Quick! What's your favorite conspiracy theory?`
+            ];
+            
+            const response = await processText(prompts[Math.floor(Math.random() * prompts.length)], client.user.id, null);
+            await channel.send({
+                content: response,
+                allowedMentions: { parse: ['users'] }
+            });
+            
+            if (ttsHandler.isEnabled()) {
+                await ttsHandler.speak(response);
+            }
+        }
+    } catch (error) {
+        console.error('Error in random message timer:', error);
+    }
+}, 3 * 60 * 60 * 1000); // 3 hours
+
 client.on('messageCreate', async message => {
-    // Ignore messages from bots, messages not in target channel/guild, and messages starting with "-"
+    // Ignore messages from bots and messages starting with "-"
     if (message.author.bot || 
         message.guildId !== config.TARGET_GUILD_ID || 
         message.channelId !== config.TARGET_CHANNEL_ID ||
         message.content.trim().startsWith('-')) {
         return;
     }
+
+    // Check if message mentions the bot or passes random chance
+    const shouldRespond = message.mentions.has(client.user) || Math.random() < 0.3;
 
     try {
         let response;
@@ -405,13 +584,31 @@ client.on('messageCreate', async message => {
         // Add the interaction to memory with processed mentions
         addToConversationHistory(message.author.id, processedPrompt, response);
 
-        // Speak the response in voice channel
-        await ttsHandler.speak(response);
-
-        // Split response into chunks if it's too long and send as replies
+        // Send text message first
         const MAX_LENGTH = 2000;
         if (response.length <= MAX_LENGTH) {
             await message.reply({
+                content: response,
+                allowedMentions: { parse: ['users'] }  // Allow user mentions
+            });
+        } else {
+            const chunks = response.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g'));
+            await message.reply({
+                content: chunks[0],
+                allowedMentions: { parse: ['users'] }
+            });
+            for (let i = 1; i < chunks.length; i++) {
+                await message.channel.send({
+                    content: chunks[i],
+                    allowedMentions: { parse: ['users'] }
+                });
+            }
+        }
+
+        // Then speak the response if TTS is enabled
+        if (ttsHandler.isEnabled()) {
+            await ttsHandler.speak(response);
+        }
                 content: response,
                 allowedMentions: { repliedUser: false }  // Don't ping the user
             });

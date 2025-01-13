@@ -13,6 +13,8 @@ class TTSHandler {
     constructor() {
         this.player = createAudioPlayer();
         this.connection = null;
+        this.enabled = true;
+        this.voiceId = 'default';
     }
 
     async connectToChannel(channel) {
@@ -73,6 +75,29 @@ class TTSHandler {
             this.connection.destroy();
             this.connection = null;
         }
+    }
+
+    enable() {
+        this.enabled = true;
+        return true;
+    }
+
+    disable() {
+        this.enabled = false;
+        return true;
+    }
+
+    isEnabled() {
+        return this.enabled;
+    }
+
+    setVoice(voiceId) {
+        this.voiceId = voiceId;
+        return true;
+    }
+
+    getVoice() {
+        return this.voiceId;
     }
 }
 
