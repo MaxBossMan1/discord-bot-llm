@@ -7,6 +7,7 @@ const {
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const FormData = require('form-data');
 
 class TTSHandler {
     constructor() {
@@ -37,9 +38,14 @@ class TTSHandler {
 
         try {
             // Call the TTS server
+            const formData = new FormData();
+            formData.append('text', text);
             const response = await axios.post('http://localhost:8000/tts/', 
-                { text },
-                { responseType: 'arraybuffer' }
+                formData,
+                { 
+                    responseType: 'arraybuffer',
+                    headers: formData.getHeaders()
+                }
             );
 
             // Save the audio to a temporary file

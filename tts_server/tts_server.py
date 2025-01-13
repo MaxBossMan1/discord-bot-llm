@@ -1,40 +1,47 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from flask import Flask, request, send_file
 import torch
 from transformers import VitsModel, AutoTokenizer
 import soundfile as sf
-import io
-import numpy as np
 import os
+from threading import Lock
 
-app = FastAPI()
+app = Flask(__name__)
+model_lock = Lock()
 
-# Initialize the model and tokenizer
+print("Loading TTS model...")
 model = VitsModel.from_pretrained("facebook/mms-tts-eng")
 tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-eng")
+print("TTS model loaded successfully!")
 
-@app.post("/tts/")
-async def text_to_speech(text: str):
+@app.route('/tts/', methods=['POST'])
+def text_to_speech():
     try:
-        inputs = tokenizer(text, return_tensors="pt")
-        with torch.no_grad():
-            output = model(**inputs).waveform
+        text = request.form.get('text', '')
+        if not text:
+            return 'No text provided', 400
 
-        # Convert to numpy array
-        audio_data = output.numpy()[0]
-        
-        # Save to temporary file
-        output_path = "temp_audio.wav"
-        sf.write(output_path, audio_data, samplerate=16000)
-        
-        return FileResponse(
-            output_path,
-            media_type="audio/wav",
-            filename="speech.wav"
-        )
+        # Use a lock to prevent concurrent model inference
+        with model_lock:
+            inputs = tokenizer(text, return_tensors="pt")
+            with torch.no_grad():
+                output = model(**inputs).waveform
+
+            # Convert to numpy array
+            audio_data = output.numpy()[0]
+            
+            # Save to temporary file
+            output_path = os.path.join(os.path.dirname(__file__), "temp_audio.wav")
+            sf.write(output_path, audio_data, samplerate=16000)
+            
+            return send_file(
+                output_path,
+                mimetype="audio/wav",
+                as_attachment=True,
+                download_name="speech.wav"
+            )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in TTS: {str(e)}")
+        return str(e), 500
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000, threaded=True)
