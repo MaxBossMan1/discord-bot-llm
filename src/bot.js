@@ -164,13 +164,14 @@ class DiscordBot {
         const isMentioned = message.mentions.has(this.client.user);
         let shouldRespond = false;
         let responseReason = '';
+        let randomChance = 0;
 
         if (isMentioned) {
             shouldRespond = true;
             responseReason = 'bot mentioned';
         } else {
             // If not mentioned, use random chance
-            const randomChance = Math.random();
+            randomChance = Math.random();
             shouldRespond = randomChance < 0.3;
             responseReason = shouldRespond ? 'random chance' : 'skipped (random)';
         }
