@@ -2,7 +2,7 @@ from flask import Flask, request, send_file, jsonify
 import os
 from threading import Lock
 import json
-from elevenlabs import Voice, VoiceClone, VoiceSettings, generate, voices, set_api_key
+from elevenlabs import Voice, VoiceSettings, generate, voices, set_api_key
 from dotenv import load_dotenv
 import tempfile
 
