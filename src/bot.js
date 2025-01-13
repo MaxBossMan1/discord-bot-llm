@@ -161,7 +161,18 @@ class DiscordBot {
         }
 
         // Check if message mentions the bot or passes random chance
-        const shouldRespond = message.mentions.has(this.client.user) || Math.random() < 0.3;
+        const randomChance = Math.random();
+        const shouldRespond = message.mentions.has(this.client.user) || randomChance < 0.3;
+        
+        console.log(`[Message Response] User: ${message.author.username}, Content: "${message.content.substring(0, 50)}${message.content.length > 50 ? '...' : ''}"
+    - Mentioned bot: ${message.mentions.has(this.client.user)}
+    - Random chance: ${randomChance.toFixed(4)} (threshold: 0.3)
+    - Will respond: ${shouldRespond}`);
+
+        if (!shouldRespond) {
+            console.log('  → Skipping message due to random chance');
+            return;
+        }
 
         try {
             let response;
@@ -295,14 +306,30 @@ class DiscordBot {
             const baseMs = randomMessageConfig.baseInterval * 60 * 1000;
             const randomMs = Math.floor(Math.random() * randomMessageConfig.randomInterval * 60 * 1000);
             const nextInterval = baseMs + randomMs;
+            const nextMinutes = nextInterval / (60 * 1000);
+            
+            console.log(`[Random Timer] Scheduling next message check:
+    - Base interval: ${randomMessageConfig.baseInterval} minutes
+    - Random addition: ${(randomMs / (60 * 1000)).toFixed(2)} minutes
+    - Total wait: ${nextMinutes.toFixed(2)} minutes
+    - Next check at: ${new Date(Date.now() + nextInterval).toLocaleString()}`);
             
             setTimeout(async () => {
                 try {
                     const now = Date.now();
                     const timeSinceLastMessage = now - lastMessageTime;
                     const minTimeMs = randomMessageConfig.minTimeBetweenMessages * 60 * 1000;
+                    const randomTrigger = Math.random();
+                    const timeCheck = timeSinceLastMessage >= minTimeMs;
 
-                    if (timeSinceLastMessage >= minTimeMs && Math.random() < randomMessageConfig.triggerChance) {
+                    console.log(`[Random Timer] Checking conditions:
+    - Time since last message: ${(timeSinceLastMessage / (60 * 1000)).toFixed(2)} minutes
+    - Minimum required: ${randomMessageConfig.minTimeBetweenMessages} minutes
+    - Time check passed: ${timeCheck}
+    - Random trigger: ${randomTrigger.toFixed(4)} (threshold: ${randomMessageConfig.triggerChance})
+    - Will attempt message: ${timeCheck && randomTrigger < randomMessageConfig.triggerChance}`);
+
+                    if (timeCheck && randomTrigger < randomMessageConfig.triggerChance) {
                         const guild = this.client.guilds.cache.get(config.TARGET_GUILD_ID);
                         const channel = guild.channels.cache.get(config.TARGET_CHANNEL_ID);
 
@@ -310,8 +337,16 @@ class DiscordBot {
                         const members = (await guild.members.fetch()).filter(member => !member.user.bot);
                         const randomMember = members.random();
 
+                        console.log(`[Random Timer] Member selection:
+    - Total members (excluding bots): ${members.size}
+    - Selected member: ${randomMember ? randomMember.user.username : 'none'}`);
+
                         if (randomMember) {
                             const prompt = getRandomPrompt(randomMember);
+                            console.log(`[Random Timer] Generated prompt:
+    - Target user: ${randomMember.user.username}
+    - Prompt: "${prompt}"`);
+
                             const response = await this.textProcessor.processText(
                                 prompt,
                                 this.client.user.id,
@@ -319,16 +354,26 @@ class DiscordBot {
                                 randomMember.user.username
                             );
 
+                            console.log(`[Random Timer] Generated response:
+    - Length: ${response.length} characters
+    - Response: "${response.substring(0, 100)}${response.length > 100 ? '...' : ''}"`);
+
                             await channel.send({
                                 content: response,
                                 allowedMentions: { parse: ['users'] }
                             });
 
                             if (this.ttsHandler.isEnabled()) {
+                                console.log('[Random Timer] TTS is enabled, speaking response');
                                 await this.ttsHandler.speak(response);
+                            } else {
+                                console.log('[Random Timer] TTS is disabled, skipping speech');
                             }
 
                             lastMessageTime = now;
+                            console.log(`[Random Timer] Message sent successfully, updated last message time to: ${new Date(lastMessageTime).toLocaleString()}`);
+                        } else {
+                            console.log('[Random Timer] No eligible members found, skipping message');
                         }
                     }
                 } catch (error) {
