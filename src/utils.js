@@ -38,18 +38,33 @@ async function bingSearch(query) {
 
         const results = response.data.webPages?.value || [];
         if (results.length === 0) {
-            return "Sorry, I couldn't find any results for that query.";
+            return {
+                success: false,
+                message: "Sorry, I couldn't find any results for that query."
+            };
         }
 
-        // Format the results
+        // Format the results for AI processing
         const formattedResults = results.map((result, index) => {
-            return `${index + 1}. **${result.name}**\n${result.snippet}\n${result.url}\n`;
-        }).join('\n');
+            return {
+                title: result.name,
+                snippet: result.snippet,
+                url: result.url
+            };
+        });
 
-        return `Here's what I found:\n\n${formattedResults}`;
+        return {
+            success: true,
+            results: formattedResults,
+            rawResults: results
+        };
     } catch (error) {
         console.error('Bing search error:', error);
-        return "Sorry, I couldn't perform the search right now. Make sure the Bing API key is configured correctly.";
+        return {
+            success: false,
+            message: "Sorry, I couldn't perform the search right now. Make sure the Bing API key is configured correctly.",
+            error: error
+        };
     }
 }
 

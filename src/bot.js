@@ -82,7 +82,29 @@ class DiscordBot {
             if (interaction.commandName === 'search') {
                 await interaction.deferReply();
                 const query = interaction.options.getString('query');
-                const response = await this.commandManager.bingSearch(query);
+                const searchResult = await this.commandManager.bingSearch(query);
+
+                if (!searchResult.success) {
+                    await interaction.editReply(searchResult.message);
+                    return;
+                }
+
+                // Format search results for AI processing
+                const searchContext = `Here are the search results for "${query}":\n\n` +
+                    searchResult.results.map((result, index) => 
+                        `[${index + 1}] ${result.title}\n${result.snippet}\nSource: ${result.url}`
+                    ).join('\n\n');
+
+                console.log(`[Search] Processing query: "${query}"\nContext length: ${searchContext.length} characters`);
+
+                // Process through Mistral
+                const response = await this.textProcessor.processText(
+                    `Based on these search results, please provide a comprehensive but concise answer to the query "${query}". Include relevant information from the sources and cite them using [1], [2], etc.: \n\n${searchContext}`,
+                    interaction.user.id,
+                    interaction,
+                    interaction.user.username
+                );
+
                 await interaction.editReply(response);
                 return;
             }
