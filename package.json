@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "setup": "npm install && cd tts_server && python -m venv venv && ./venv/bin/pip install -r requirements.txt",
+    "start": "concurrently \"cd tts_server && ./venv/bin/python tts_server.py\" \"node index.js\""
   },
   "keywords": [],
   "author": "",
@@ -13,6 +15,8 @@
     "@discordjs/opus": "^0.9.0",
     "@discordjs/voice": "^0.18.0",
     "axios": "^1.7.9",
+    "bing-chat": "^0.2.3",
+    "concurrently": "^8.2.2",
     "discord.js": "^14.17.3",
     "ffmpeg-static": "^5.2.0",
     "form-data": "^4.0.1",
