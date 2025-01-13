@@ -4,10 +4,7 @@ This Discord bot uses local LLM models through Msty to respond to messages with 
 
 ## Setup
 
-1. Install dependencies:
-```bash
-npm install
-```
+1. Make sure you have Python 3.11 installed on your system.
 
 2. Copy the sample configuration file and edit it with your settings:
 ```bash
@@ -22,21 +19,40 @@ cp config.sample.json config.json
     "TARGET_GUILD_ID": "your-guild-id",
     "TARGET_CHANNEL_ID": "your-channel-id",
     "VOICE_CHANNEL_ID": "your-voice-channel-id",
-    "MEMORY_LIMIT": 10
+    "MEMORY_LIMIT": 10,
+    "BING_COOKIE": "your-bing-cookie-here"
 }
 ```
 
 4. Make sure your Msty server is running and accessible at the URL specified in your config.json
 
-5. Install Python dependencies and start the TTS server:
+5. Start everything with a single command:
 ```bash
-cd tts_server
-pip install -r requirements.txt
-python tts_server.py
+./start.sh
 ```
 
-6. In another terminal, start the bot:
+This script will:
+- Check for Python 3.11
+- Install Node.js dependencies
+- Set up Python virtual environment
+- Install Python dependencies
+- Start the TTS server
+- Start the Discord bot
+
+Alternatively, you can start components manually:
+
 ```bash
+# Install dependencies
+npm install
+cd tts_server
+python -m venv venv
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+pip install -r requirements.txt
+
+# Start TTS server
+python tts_server.py
+
+# In another terminal, start the bot
 node index.js
 ```
 
@@ -48,6 +64,7 @@ node index.js
 - Maintains conversation memory (last 10 messages per user)
 - Handles long responses by splitting them into chunks
 - Maintains a chaotic and entertaining personality
+- Web search capabilities using Bing
 
 ### Response Behavior
 - 30% chance to respond to normal messages
@@ -71,14 +88,27 @@ node index.js
 - `/tts clone` - Clone a voice from an audio file
   - Requires a WAV file and a name for the voice profile
 
-### Suggested Additional Commands
-Here are some useful commands we could add:
+### Fun Commands
+- `/story` - Generate a random story
+- `/roast @user` - Generate a playful roast
+- `/compliment @user` - Generate a nice compliment
+- `/conspiracy` - Generate a random conspiracy theory
+- `/fact` - Share an interesting "fact" (may be true or false)
+- `/quote` - Generate an inspirational (or chaotic) quote
+- `/debate <topic>` - Start a debate on a topic
+- `/impersonate @user <message>` - Temporarily impersonate another user's style
+
+### Search Commands
+- `/search <query>` - Search the web using Bing
+
+### Planned Features
+Here are some features planned for future updates:
 
 #### Voice Commands
 - `/voice list` - List all available voice profiles
-- `/voice select <name>` - Select a voice profile to use
+- `/voice select <n>` - Select a voice profile to use
 - `/voice random` - Use random voice profiles for responses
-- `/voice preview <name>` - Preview how a voice profile sounds
+- `/voice preview <n>` - Preview how a voice profile sounds
 
 #### Personality Commands
 - `/personality aggressive` - Make responses more aggressive
@@ -94,16 +124,6 @@ Here are some useful commands we could add:
 - `/target channel <channel>` - Change target text channel
 - `/target voice <channel>` - Change target voice channel
 
-#### Fun Commands
-- `/impersonate <user>` - Temporarily impersonate another user's style
-- `/debate <topic>` - Start a debate on a topic
-- `/story` - Generate a random story
-- `/roast <user>` - Generate a playful roast
-- `/compliment <user>` - Generate a nice compliment
-- `/conspiracy` - Generate a random conspiracy theory
-- `/fact` - Share a "fact" (may be true or false)
-- `/quote` - Generate an inspirational (or chaotic) quote
-
 ## Configuration
 
 ### config.json Settings
@@ -113,6 +133,7 @@ Here are some useful commands we could add:
 - `TARGET_CHANNEL_ID`: The channel ID to monitor
 - `VOICE_CHANNEL_ID`: The voice channel ID for TTS
 - `MEMORY_LIMIT`: Number of messages to remember per user
+- `BING_COOKIE`: Your Bing cookie for web search functionality
 
 ### Response Settings (in index.js)
 - Response chance: 30% for normal messages

@@ -4,6 +4,54 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { BingChat } = require('bing-chat');
+
+// Load configuration
+const config = require('./config.json');
+
+// Initialize Bing Chat
+const bingChat = new BingChat({
+    cookie: config.BING_COOKIE
+});
+
+// Fun command handlers
+const funCommands = {
+    story: async () => {
+        return await mstyRequest("Generate a creative and entertaining short story. Be imaginative and unexpected.");
+    },
+    roast: async (user) => {
+        return await mstyRequest(`Generate a playful and funny roast for ${user}. Keep it light-hearted and not too mean.`);
+    },
+    compliment: async (user) => {
+        return await mstyRequest(`Generate a creative and sincere compliment for ${user}.`);
+    },
+    conspiracy: async () => {
+        return await mstyRequest("Generate a funny and absurd conspiracy theory. Make it entertaining and obviously not serious.");
+    },
+    fact: async () => {
+        return await mstyRequest("Share an interesting fact that might be true or false. Don't indicate which it is.");
+    },
+    quote: async () => {
+        return await mstyRequest("Generate an inspirational or chaotic quote with its fictional author.");
+    },
+    debate: async (topic) => {
+        return await mstyRequest(`Start a debate about "${topic}" by presenting multiple viewpoints in a humorous way.`);
+    },
+    impersonate: async (user, message) => {
+        return await mstyRequest(`Respond to "${message}" while impersonating ${user}'s style and mannerisms.`);
+    }
+};
+
+// Bing search function
+async function bingSearch(query) {
+    try {
+        const response = await bingChat.sendMessage(query);
+        return response.text;
+    } catch (error) {
+        console.error('Bing search error:', error);
+        return "Sorry, I couldn't perform the search right now.";
+    }
+}
 
 // Simple token counter (approximation)
 function countTokens(text) {
@@ -376,6 +424,59 @@ async function processImage(attachment, prompt, userId, message) {
 // Register slash commands
 async function registerCommands() {
     const commands = [
+        // Fun commands
+        new SlashCommandBuilder()
+            .setName('story')
+            .setDescription('Generate a random story'),
+        new SlashCommandBuilder()
+            .setName('roast')
+            .setDescription('Generate a playful roast')
+            .addUserOption(option =>
+                option.setName('user')
+                    .setDescription('The user to roast')
+                    .setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('compliment')
+            .setDescription('Generate a nice compliment')
+            .addUserOption(option =>
+                option.setName('user')
+                    .setDescription('The user to compliment')
+                    .setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('conspiracy')
+            .setDescription('Generate a random conspiracy theory'),
+        new SlashCommandBuilder()
+            .setName('fact')
+            .setDescription('Share an interesting "fact"'),
+        new SlashCommandBuilder()
+            .setName('quote')
+            .setDescription('Generate an inspirational or chaotic quote'),
+        new SlashCommandBuilder()
+            .setName('debate')
+            .setDescription('Start a debate on a topic')
+            .addStringOption(option =>
+                option.setName('topic')
+                    .setDescription('The topic to debate')
+                    .setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('impersonate')
+            .setDescription('Impersonate another user')
+            .addUserOption(option =>
+                option.setName('user')
+                    .setDescription('The user to impersonate')
+                    .setRequired(true))
+            .addStringOption(option =>
+                option.setName('message')
+                    .setDescription('The message to respond to')
+                    .setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('search')
+            .setDescription('Search the web using Bing')
+            .addStringOption(option =>
+                option.setName('query')
+                    .setDescription('What to search for')
+                    .setRequired(true)),
+        // TTS commands
         new SlashCommandBuilder()
             .setName('tts')
             .setDescription('Control TTS settings')
@@ -440,7 +541,46 @@ client.on('ready', async () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    if (interaction.commandName === 'tts') {
+    try {
+        // Fun commands
+        if (Object.keys(funCommands).includes(interaction.commandName)) {
+            await interaction.deferReply();
+            let response;
+            
+            switch (interaction.commandName) {
+                case 'roast':
+                case 'compliment':
+                    const user = interaction.options.getUser('user');
+                    response = await funCommands[interaction.commandName](user.username);
+                    break;
+                case 'debate':
+                    const topic = interaction.options.getString('topic');
+                    response = await funCommands[interaction.commandName](topic);
+                    break;
+                case 'impersonate':
+                    const targetUser = interaction.options.getUser('user');
+                    const message = interaction.options.getString('message');
+                    response = await funCommands[interaction.commandName](targetUser.username, message);
+                    break;
+                default:
+                    response = await funCommands[interaction.commandName]();
+            }
+            
+            await interaction.editReply(response);
+            return;
+        }
+
+        // Bing search command
+        if (interaction.commandName === 'search') {
+            await interaction.deferReply();
+            const query = interaction.options.getString('query');
+            const response = await bingSearch(query);
+            await interaction.editReply(response);
+            return;
+        }
+
+        // TTS commands
+        if (interaction.commandName === 'tts') {
         const subcommand = interaction.options.getSubcommand();
 
         switch (subcommand) {
@@ -479,15 +619,20 @@ client.on('interactionCreate', async interaction => {
                     await axios.post('http://localhost:8000/tts/clone_voice', formData, {
                         headers: formData.getHeaders()
                     });
-
-                    await interaction.editReply(`Voice "${name}" has been cloned successfully! 🎭`);
+                    await interaction.editReply(`Voice "${name}" has been cloned! 🎭`);
                 } catch (error) {
                     console.error('Error cloning voice:', error);
-                    await interaction.editReply('Failed to clone voice. Please try again later. 😢');
+                    await interaction.editReply('Failed to clone voice. Please try again with a different audio file. 😢');
                 }
                 break;
         }
-        return;
+    }
+    } catch (error) {
+        console.error('Error handling command:', error);
+        const message = interaction.deferred ? 
+            interaction.editReply('An error occurred while processing your command. Please try again. 😢') :
+            interaction.reply('An error occurred while processing your command. Please try again. 😢');
+        await message;
     }
 });
 
@@ -609,6 +754,10 @@ client.on('messageCreate', async message => {
         if (ttsHandler.isEnabled()) {
             await ttsHandler.speak(response);
         }
+
+        // Check if response needs to be chunked
+        if (response.length <= MAX_LENGTH) {
+            await message.reply({
                 content: response,
                 allowedMentions: { repliedUser: false }  // Don't ping the user
             });
