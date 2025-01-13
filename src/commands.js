@@ -2,9 +2,9 @@ const { SlashCommandBuilder, REST, Routes } = require('discord.js');
 const { config } = require('./config');
 
 class CommandManager {
-    constructor(textProcessor, bingSearch) {
+    constructor(textProcessor, bingSearchFn) {
         this.textProcessor = textProcessor;
-        this.bingSearch = bingSearch;
+        this.bingSearch = bingSearchFn;
         this.funCommands = this.initializeFunCommands();
     }
 
