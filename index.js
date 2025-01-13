@@ -747,28 +747,7 @@ client.on('messageCreate', async message => {
             await ttsHandler.speak(response);
         }
 
-        // Check if response needs to be chunked
-        if (response.length <= MAX_LENGTH) {
-            await message.reply({
-                content: response,
-                allowedMentions: { repliedUser: false }  // Don't ping the user
-            });
-        } else {
-            const chunks = response.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g'));
-            // Send first chunk as reply
-            await message.reply({
-                content: chunks[0],
-                allowedMentions: { repliedUser: false }
-            });
-            // Send remaining chunks as follow-ups
-            for (let i = 1; i < chunks.length; i++) {
-                await message.channel.send({
-                    content: chunks[i],
-                    reply: { messageReference: message.id },
-                    allowedMentions: { repliedUser: false }
-                });
-            }
-        }
+
     } catch (error) {
         console.error('Error handling message:', error);
         await message.reply('FUCK! Something went wrong! *has mental breakdown*');
