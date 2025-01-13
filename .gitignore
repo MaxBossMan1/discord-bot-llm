@@ -1,3 +1,5 @@
+config.json
+conversation_memory.json
 # Logs
 logs
 *.log
