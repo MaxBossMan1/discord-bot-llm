@@ -63,7 +63,22 @@ class TTSHandler {
 
                 // Create and play the audio resource
                 const resource = createAudioResource(tempFile);
+                
+                // Add state change logging
+                this.player.on(AudioPlayerStatus.Playing, () => {
+                    console.log('Audio player is now playing');
+                });
+                
+                this.player.on(AudioPlayerStatus.Idle, () => {
+                    console.log('Audio player is now idle');
+                });
+                
+                this.player.on('error', error => {
+                    console.error('Error in audio player:', error);
+                });
+
                 this.player.play(resource);
+                console.log('Attempting to play audio resource');
 
                 return new Promise((resolve) => {
                     const cleanup = () => {

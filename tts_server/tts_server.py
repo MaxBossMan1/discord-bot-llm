@@ -5,6 +5,8 @@ from threading import Lock
 from elevenlabs import generate, voices, set_api_key
 from dotenv import load_dotenv
 import tempfile
+import io
+from pydub import AudioSegment
 
 app = Flask(__name__)
 model_lock = Lock()
@@ -49,22 +51,30 @@ def text_to_speech():
                 model="eleven_multilingual_v2"
             )
             
-            # Save to a temporary file and ensure cleanup
-            temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
-            os.makedirs(temp_dir, exist_ok=True)
-            
-            temp_file_path = os.path.join(temp_dir, f'speech_{int(time.time()*1000)}.wav')
+            # Convert audio to WAV format using pydub
             try:
-                with open(temp_file_path, 'wb') as f:
+                # Create a temporary directory
+                temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                # Save the MP3 data to a temporary file
+                temp_mp3_path = os.path.join(temp_dir, f'speech_mp3_{int(time.time()*1000)}.mp3')
+                temp_wav_path = os.path.join(temp_dir, f'speech_{int(time.time()*1000)}.wav')
+                
+                with open(temp_mp3_path, 'wb') as f:
                     f.write(audio)
                 
-                print(f"Audio file saved to: {temp_file_path}")
-                if not os.path.exists(temp_file_path):
-                    print("Error: File was not created!")
+                # Convert to WAV
+                audio_segment = AudioSegment.from_mp3(temp_mp3_path)
+                audio_segment.export(temp_wav_path, format="wav")
+                
+                print(f"Audio file converted and saved to: {temp_wav_path}")
+                if not os.path.exists(temp_wav_path):
+                    print("Error: WAV file was not created!")
                     return "Failed to create audio file", 500
                 
                 response = send_file(
-                    temp_file_path,
+                    temp_wav_path,
                     mimetype="audio/wav",
                     as_attachment=True,
                     download_name="speech.wav"
@@ -78,11 +88,12 @@ def text_to_speech():
                 return response
             finally:
                 # Ensure file cleanup happens after response is sent
-                if os.path.exists(temp_file_path):
-                    try:
-                        os.unlink(temp_file_path)
-                    except Exception as e:
-                        print(f"Warning: Could not delete temporary file {temp_file_path}: {e}")
+                for file_path in [temp_mp3_path, temp_wav_path]:
+                    if os.path.exists(file_path):
+                        try:
+                            os.unlink(file_path)
+                        except Exception as e:
+                            print(f"Warning: Could not delete temporary file {file_path}: {e}")
     except Exception as e:
         print(f"Error in TTS: {str(e)}")
         return str(e), 500
