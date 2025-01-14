@@ -5,8 +5,6 @@ const {
     AudioPlayerStatus
 } = require('@discordjs/voice');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
 const FormData = require('form-data');
 
 class TTSHandler {
@@ -54,44 +52,43 @@ class TTSHandler {
                 }
             );
 
-            try {
-                // Create an audio resource directly from the response data
-                const audioBuffer = Buffer.from(response.data);
-                const resource = createAudioResource(audioBuffer, {
-                    inputType: 'mp3',
-                    inlineVolume: true
-                });
+            // Create an audio resource directly from the response data
+            const audioBuffer = Buffer.from(response.data);
+            const resource = createAudioResource(audioBuffer, {
+                inputType: 'mp3',
+                inlineVolume: true
+            });
 
-                if (!resource) {
-                    throw new Error('Failed to create audio resource');
-                }
-
-                // Add state change logging
-                this.player.on(AudioPlayerStatus.Playing, () => {
-                    console.log('Audio player is now playing');
-                });
-                
-                this.player.on(AudioPlayerStatus.Idle, () => {
-                    console.log('Audio player is now idle');
-                });
-                
-                this.player.on('error', error => {
-                    console.error('Error in audio player:', error);
-                });
-
-                this.player.play(resource);
-                console.log('Attempting to play audio resource');
-
-                return new Promise((resolve) => {
-                    this.player.once(AudioPlayerStatus.Idle, () => {
-                        resolve(true);
-                    });
-
-                    this.player.once('error', () => {
-                        resolve(false);
-                    });
-                });
+            if (!resource) {
+                throw new Error('Failed to create audio resource');
             }
+
+            // Add state change logging
+            this.player.on(AudioPlayerStatus.Playing, () => {
+                console.log('Audio player is now playing');
+            });
+            
+            this.player.on(AudioPlayerStatus.Idle, () => {
+                console.log('Audio player is now idle');
+            });
+            
+            this.player.on('error', error => {
+                console.error('Error in audio player:', error);
+            });
+
+            this.player.play(resource);
+            console.log('Attempting to play audio resource');
+
+            return new Promise((resolve) => {
+                this.player.once(AudioPlayerStatus.Idle, () => {
+                    resolve(true);
+                });
+
+                this.player.once('error', () => {
+                    resolve(false);
+                });
+            });
+
         } catch (error) {
             console.error('Error in TTS:', error);
             return false;
