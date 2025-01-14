@@ -30,12 +30,22 @@ class TTSHandler {
     }
 
     async playNextInQueue() {
-        if (this.audioQueue.length === 0 || this.isPlaying) return;
+        if (this.audioQueue.length === 0 || this.isPlaying) {
+            console.log('No audio in queue or already playing');
+            return;
+        }
 
         const nextAudio = this.audioQueue.shift();
-        this.isPlaying = true;
+        console.log('Playing next audio from queue:', nextAudio.tempFile);
 
         try {
+            // Make sure we're still connected
+            if (!this.connection) {
+                console.error('No TTS voice connection');
+                return;
+            }
+
+            // Create resource
             const resource = createAudioResource(nextAudio.tempFile, {
                 inputType: 'mp3',
                 inlineVolume: true
@@ -45,21 +55,41 @@ class TTSHandler {
                 throw new Error('Failed to create audio resource');
             }
 
-            this.player.play(resource);
-            console.log('Playing next audio in queue:', nextAudio.tempFile);
+            // Set volume
+            if (resource.volume) {
+                resource.volume.setVolume(0.8);
+            }
 
-            // Clean up the temporary file when done
-            this.player.once(AudioPlayerStatus.Idle, () => {
+            // Stop current playback if any
+            this.player.stop();
+
+            // Play the resource
+            this.isPlaying = true;
+            this.player.play(resource);
+
+            // Monitor playback
+            const cleanup = () => {
                 try {
                     fs.unlinkSync(nextAudio.tempFile);
                     console.log('Temporary file cleaned up:', nextAudio.tempFile);
                 } catch (err) {
                     console.error('Error cleaning up temp file:', err);
                 }
+                this.isPlaying = false;
+                this.playNextInQueue();
+            };
+
+            this.player.once(AudioPlayerStatus.Idle, cleanup);
+            this.player.once('error', (error) => {
+                console.error('Error during TTS playback:', error);
+                cleanup();
             });
         } catch (error) {
             console.error('Error playing queued audio:', error);
             this.isPlaying = false;
+            try {
+                fs.unlinkSync(nextAudio.tempFile);
+            } catch {}
             this.playNextInQueue();
         }
     }
@@ -68,13 +98,50 @@ class TTSHandler {
         if (!channel) return false;
 
         try {
+            // Destroy existing connection if any
+            if (this.connection) {
+                this.connection.destroy();
+                this.connection = null;
+            }
+
+            // Create new connection
             this.connection = joinVoiceChannel({
                 channelId: channel.id,
                 guildId: channel.guild.id,
                 adapterCreator: channel.guild.voiceAdapterCreator,
+                selfDeaf: false,
+                selfMute: false
             });
 
+            // Handle connection events
+            this.connection.on('stateChange', (oldState, newState) => {
+                console.log(`TTS Connection state changed from ${oldState.status} to ${newState.status}`);
+                if (newState.status === 'disconnected') {
+                    this.connection = null;
+                }
+            });
+
+            // Subscribe player
             this.connection.subscribe(this.player);
+
+            // Wait for ready state
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('TTS Connection timeout'));
+                }, 10000);
+
+                const onStateChange = (_, newState) => {
+                    if (newState.status === 'ready') {
+                        clearTimeout(timeout);
+                        this.connection.off('stateChange', onStateChange);
+                        resolve();
+                    }
+                };
+
+                this.connection.on('stateChange', onStateChange);
+            });
+
+            console.log('TTS Connected to voice channel:', channel.name);
             return true;
         } catch (error) {
             console.error('Error connecting to voice channel:', error);

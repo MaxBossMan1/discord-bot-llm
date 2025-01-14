@@ -1,6 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
-const play = require('play-dl');
+const ytdl = require('@distube/ytdl-core');
 const crypto = require('crypto');
 
 class TrackDownloader {
@@ -73,22 +73,46 @@ class TrackDownloader {
         const downloadPromise = (async () => {
             try {
                 console.log('Downloading track:', url);
-                const stream = await play.stream(url, {
-                    discordPlayerCompatibility: true,
-                    quality: 2
+
+                // Get video info first
+                const info = await ytdl.getInfo(url);
+                const format = ytdl.chooseFormat(info.formats, {
+                    quality: 'highestaudio',
+                    filter: 'audioonly'
                 });
+
+                if (!format) {
+                    throw new Error('No suitable audio format found');
+                }
 
                 // Create write stream
                 const writeStream = require('fs').createWriteStream(filePath);
 
+                // Download the audio
+                const stream = ytdl.downloadFromInfo(info, {
+                    format: format,
+                    quality: 'highestaudio',
+                    filter: 'audioonly'
+                });
+
                 // Pipe the audio stream to the file
-                stream.stream.pipe(writeStream);
+                stream.pipe(writeStream);
 
                 // Wait for the download to complete
                 await new Promise((resolve, reject) => {
                     writeStream.on('finish', resolve);
                     writeStream.on('error', reject);
-                    stream.stream.on('error', reject);
+                    stream.on('error', reject);
+
+                    // Progress tracking
+                    let lastPercent = 0;
+                    stream.on('progress', (_, downloaded, total) => {
+                        const percent = Math.round((downloaded / total) * 100);
+                        if (percent > lastPercent) {
+                            console.log(`Download progress: ${percent}%`);
+                            lastPercent = percent;
+                        }
+                    });
                 });
 
                 console.log('Download complete:', url);
