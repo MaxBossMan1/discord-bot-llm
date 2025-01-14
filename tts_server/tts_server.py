@@ -32,7 +32,7 @@ def list_voices():
 def text_to_speech():
     try:
         text = request.form.get('text', '')
-        voice_id = request.form.get('voice_id', 'Rachel')
+        voice_id = request.form.get('voice_id', '9BWtsMINqrJLrRacOk9x')  # Default to 'Aria' voice
         
         if not text:
             return 'No text provided', 400

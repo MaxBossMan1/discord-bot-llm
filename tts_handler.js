@@ -42,7 +42,7 @@ class TTSHandler {
             // Call the TTS server
             const formData = new FormData();
             formData.append('text', text);
-            formData.append('speaker', this.voiceId);
+            formData.append('voice_id', this.voiceId);
             const response = await axios.post('http://localhost:8000/tts/', 
                 formData,
                 { 
