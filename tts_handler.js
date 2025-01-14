@@ -55,14 +55,21 @@ class TTSHandler {
             );
 
             // Create a unique temporary file name
-            const tempFile = path.join(__dirname, `temp_audio_${Date.now()}.wav`);
+            const tempFile = path.join(__dirname, `temp_audio_${Date.now()}.mp3`);
             
             try {
                 // Save the audio to a temporary file
                 fs.writeFileSync(tempFile, response.data);
 
                 // Create and play the audio resource
-                const resource = createAudioResource(tempFile);
+                console.log('Creating audio resource from:', tempFile);
+                const resource = createAudioResource(tempFile, {
+                    inputType: 'mp3',
+                    inlineVolume: true
+                });
+                if (!resource) {
+                    throw new Error('Failed to create audio resource');
+                }
                 
                 // Add state change logging
                 this.player.on(AudioPlayerStatus.Playing, () => {
