@@ -1,10 +1,9 @@
-from flask import Flask, request, send_file, jsonify
-import time
-import os
+from flask import Flask, request, send_file, jsonify, Response
+import io
 from threading import Lock
 from elevenlabs import generate, voices, set_api_key
 from dotenv import load_dotenv
-import tempfile
+import os
 
 app = Flask(__name__)
 model_lock = Lock()
@@ -49,40 +48,21 @@ def text_to_speech():
                 model="eleven_multilingual_v2"
             )
             
-            # Save to a temporary file and ensure cleanup
-            temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
-            os.makedirs(temp_dir, exist_ok=True)
+            # Create an in-memory bytes buffer
+            audio_buffer = io.BytesIO(audio)
+            audio_buffer.seek(0)
             
-            temp_file_path = os.path.join(temp_dir, f'speech_{int(time.time()*1000)}.wav')
-            try:
-                with open(temp_file_path, 'wb') as f:
-                    f.write(audio)
-                
-                print(f"Audio file saved to: {temp_file_path}")
-                if not os.path.exists(temp_file_path):
-                    print("Error: File was not created!")
-                    return "Failed to create audio file", 500
-                
-                response = send_file(
-                    temp_file_path,
-                    mimetype="audio/wav",
-                    as_attachment=True,
-                    download_name="speech.wav"
-                )
-                
-                # Add headers to prevent caching
-                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-                response.headers["Pragma"] = "no-cache"
-                response.headers["Expires"] = "0"
-                
-                return response
-            finally:
-                # Ensure file cleanup happens after response is sent
-                if os.path.exists(temp_file_path):
-                    try:
-                        os.unlink(temp_file_path)
-                    except Exception as e:
-                        print(f"Warning: Could not delete temporary file {temp_file_path}: {e}")
+            return Response(
+                audio_buffer,
+                mimetype="audio/mpeg",
+                headers={
+                    "Content-Disposition": "attachment; filename=speech.mp3",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
+            
     except Exception as e:
         print(f"Error in TTS: {str(e)}")
         return str(e), 500
