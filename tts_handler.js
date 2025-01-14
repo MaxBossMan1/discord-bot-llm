@@ -7,14 +7,19 @@ const {
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const FormData = require('form-data');
+require('dotenv').config();
 
 class TTSHandler {
     constructor() {
         this.player = createAudioPlayer();
         this.connection = null;
         this.enabled = true;
-        this.voiceId = '1S8dlQj81Ty3soQ57nz7';  // Default to 'dafuck' voice
+        this.voiceId = '1S8dlQj81Ty3soQ57nz7';  // Default voice ID
+        this.apiKey = process.env.ELEVENLABS_API_KEY;
+        
+        if (!this.apiKey) {
+            throw new Error('ELEVENLABS_API_KEY environment variable is not set');
+        }
     }
 
     async connectToChannel(channel) {
@@ -39,26 +44,33 @@ class TTSHandler {
         if (!this.connection) return false;
 
         try {
-            // Call the TTS server
-            const formData = new FormData();
-            formData.append('text', text);
-            formData.append('voice_id', this.voiceId);
-            const response = await axios.post('http://localhost:8000/tts/', 
-                formData,
-                { 
-                    responseType: 'arraybuffer',
-                    headers: {
-                        ...formData.getHeaders(),
-                        'Accept': 'application/json, text/plain, */*'
+            // Call ElevenLabs API directly
+            console.log('Calling ElevenLabs API with:', { text, voiceId: this.voiceId });
+            const response = await axios({
+                method: 'post',
+                url: `https://api.elevenlabs.io/v1/text-to-speech/${this.voiceId}`,
+                headers: {
+                    'Accept': 'audio/mpeg',
+                    'Content-Type': 'application/json',
+                    'xi-api-key': this.apiKey
+                },
+                data: {
+                    text: text,
+                    model_id: 'eleven_multilingual_v2',
+                    voice_settings: {
+                        stability: 0.5,
+                        similarity_boost: 0.75
                     }
-                }
-            );
+                },
+                responseType: 'arraybuffer'
+            });
+
+            // Save the audio to a temporary file
+            const tempFile = path.join(__dirname, `temp_${Date.now()}.mp3`);
+            console.log('Saving audio to temporary file:', tempFile);
+            fs.writeFileSync(tempFile, response.data);
 
             try {
-                // Save the audio buffer to a temporary file
-                const tempFile = path.join(__dirname, `temp_${Date.now()}.mp3`);
-                fs.writeFileSync(tempFile, response.data);
-
                 // Create an audio resource from the file
                 const resource = createAudioResource(tempFile, {
                     inputType: 'mp3',
@@ -79,6 +91,7 @@ class TTSHandler {
                     // Clean up the temporary file
                     try {
                         fs.unlinkSync(tempFile);
+                        console.log('Temporary file cleaned up:', tempFile);
                     } catch (err) {
                         console.error('Error cleaning up temp file:', err);
                     }
@@ -89,6 +102,7 @@ class TTSHandler {
                     // Clean up the temporary file on error
                     try {
                         fs.unlinkSync(tempFile);
+                        console.log('Temporary file cleaned up after error:', tempFile);
                     } catch (err) {
                         console.error('Error cleaning up temp file:', err);
                     }
@@ -108,10 +122,17 @@ class TTSHandler {
                 });
             } catch (error) {
                 console.error('Error creating or playing audio resource:', error);
+                // Clean up the temporary file on error
+                try {
+                    fs.unlinkSync(tempFile);
+                    console.log('Temporary file cleaned up after error:', tempFile);
+                } catch (err) {
+                    console.error('Error cleaning up temp file:', err);
+                }
                 return false;
             }
         } catch (error) {
-            console.error('Error in TTS:', error);
+            console.error('Error in TTS:', error.response?.data || error.message);
             return false;
         }
     }
@@ -144,6 +165,20 @@ class TTSHandler {
 
     getVoice() {
         return this.voiceId;
+    }
+
+    async listVoices() {
+        try {
+            const response = await axios.get('https://api.elevenlabs.io/v1/voices', {
+                headers: {
+                    'xi-api-key': this.apiKey
+                }
+            });
+            return response.data.voices;
+        } catch (error) {
+            console.error('Error fetching voices:', error);
+            return [];
+        }
     }
 }
 
