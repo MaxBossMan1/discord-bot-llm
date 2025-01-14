@@ -10,6 +10,7 @@ class DiscordBot {
         this.imageProcessor = imageProcessor;
         this.commandManager = commandManager;
         this.ttsHandler = ttsHandler;
+        this.processingUsers = new Set(); // Track users with ongoing message processing
 
         this.client = new Client({
             intents: [
@@ -213,6 +214,16 @@ class DiscordBot {
             return;
         }
 
+        // Check if user has a message being processed
+        const userId = message.author.id;
+        if (this.processingUsers.has(userId)) {
+            await message.reply("Hold your horses! I'm still processing your previous message. 🤔");
+            return;
+        }
+        
+        // Add user to processing set
+        this.processingUsers.add(userId);
+
         // First check for direct mentions
         const isMentioned = message.mentions.has(this.client.user);
         let shouldRespond = false;
@@ -345,6 +356,9 @@ class DiscordBot {
         } catch (error) {
             console.error('Error handling message:', error);
             await message.reply('FUCK! Something went wrong! *has mental breakdown*');
+        } finally {
+            // Remove user from processing set when done
+            this.processingUsers.delete(userId);
         }
     }
 

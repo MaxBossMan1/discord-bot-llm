@@ -16,9 +16,51 @@ class TTSHandler {
         this.enabled = true;
         this.voiceId = '1S8dlQj81Ty3soQ57nz7';  // Default voice ID
         this.apiKey = process.env.ELEVENLABS_API_KEY;
+        this.audioQueue = [];
+        this.isPlaying = false;
         
         if (!this.apiKey) {
             throw new Error('ELEVENLABS_API_KEY environment variable is not set');
+        }
+
+        this.player.on(AudioPlayerStatus.Idle, () => {
+            this.isPlaying = false;
+            this.playNextInQueue();
+        });
+    }
+
+    async playNextInQueue() {
+        if (this.audioQueue.length === 0 || this.isPlaying) return;
+
+        const nextAudio = this.audioQueue.shift();
+        this.isPlaying = true;
+
+        try {
+            const resource = createAudioResource(nextAudio.tempFile, {
+                inputType: 'mp3',
+                inlineVolume: true
+            });
+
+            if (!resource) {
+                throw new Error('Failed to create audio resource');
+            }
+
+            this.player.play(resource);
+            console.log('Playing next audio in queue:', nextAudio.tempFile);
+
+            // Clean up the temporary file when done
+            this.player.once(AudioPlayerStatus.Idle, () => {
+                try {
+                    fs.unlinkSync(nextAudio.tempFile);
+                    console.log('Temporary file cleaned up:', nextAudio.tempFile);
+                } catch (err) {
+                    console.error('Error cleaning up temp file:', err);
+                }
+            });
+        } catch (error) {
+            console.error('Error playing queued audio:', error);
+            this.isPlaying = false;
+            this.playNextInQueue();
         }
     }
 
@@ -76,69 +118,25 @@ class TTSHandler {
             console.log('Saving audio to temporary file:', tempFile);
             fs.writeFileSync(tempFile, response.data);
 
-            try {
-                // Create an audio resource from the file
-                const resource = createAudioResource(tempFile, {
-                    inputType: 'mp3',
-                    inlineVolume: true
-                });
-
-                if (!resource) {
-                    throw new Error('Failed to create audio resource');
-                }
-
-                // Add state change logging
-                this.player.on(AudioPlayerStatus.Playing, () => {
-                    console.log('Audio player is now playing');
-                });
-                
-                this.player.on(AudioPlayerStatus.Idle, () => {
-                    console.log('Audio player is now idle');
-                    // Clean up the temporary file
-                    try {
-                        fs.unlinkSync(tempFile);
-                        console.log('Temporary file cleaned up:', tempFile);
-                    } catch (err) {
-                        console.error('Error cleaning up temp file:', err);
-                    }
-                });
-                
-                this.player.on('error', error => {
-                    console.error('Error in audio player:', error);
-                    // Clean up the temporary file on error
-                    try {
-                        fs.unlinkSync(tempFile);
-                        console.log('Temporary file cleaned up after error:', tempFile);
-                    } catch (err) {
-                        console.error('Error cleaning up temp file:', err);
-                    }
-                });
-
-                this.player.play(resource);
-                console.log('Attempting to play audio resource from file:', tempFile);
-
-                return new Promise((resolve) => {
-                    this.player.once(AudioPlayerStatus.Idle, () => {
-                        resolve(true);
-                    });
-
-                    this.player.once('error', () => {
-                        resolve(false);
-                    });
-                });
-            } catch (error) {
-                console.error('Error creating or playing audio resource:', error);
-                // Clean up the temporary file on error
+            // Add to queue and start playing if not already playing
+            this.audioQueue.push({ tempFile });
+            console.log('Added audio to queue:', tempFile);
+            
+            if (!this.isPlaying) {
+                await this.playNextInQueue();
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error in TTS:', error.response?.data || error.message);
+            if (typeof tempFile !== 'undefined') {
                 try {
                     fs.unlinkSync(tempFile);
                     console.log('Temporary file cleaned up after error:', tempFile);
                 } catch (err) {
                     console.error('Error cleaning up temp file:', err);
                 }
-                return false;
             }
-        } catch (error) {
-            console.error('Error in TTS:', error.response?.data || error.message);
             return false;
         }
     }
