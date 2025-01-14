@@ -4,17 +4,38 @@ const { bingHeaders, config, gifConfig } = require('./config');
 // Function to fetch a random GIF based on keywords
 async function getRandomGif(keywords) {
     try {
-        // Extract emotion-related words from the keywords
+        // Extract emotion-related words and clean up the keywords
         const emotionKeywords = keywords.match(/\*(.*?)\*/g) || [];
-        const processedKeywords = emotionKeywords
-            .map(k => k.replace(/\*/g, '').toLowerCase())
-            .concat(keywords.split(' ').slice(0, 3))
-            .filter(k => k.length > 2)
-            .join(' ');
+        const cleanKeywords = keywords
+            .replace(/[*_]/g, '') // Remove asterisks and underscores
+            .replace(/<[^>]+>/g, '') // Remove Discord mentions/tags
+            .split(' ')
+            .filter(word => 
+                word.length > 2 && 
+                !word.startsWith('http') && 
+                !word.includes('@')
+            )
+            .slice(0, 3); // Take first 3 meaningful words
+
+        // Combine emotion keywords with clean keywords
+        const processedKeywords = [
+            ...emotionKeywords.map(k => k.replace(/\*/g, '').toLowerCase()),
+            ...cleanKeywords
+        ]
+            .slice(0, 4) // Limit total keywords
+            .join(' ')
+            .substring(0, 50); // Limit total length
+
+        // Skip if no valid keywords
+        if (!processedKeywords.trim()) {
+            console.log('[GIF] No valid keywords found, skipping GIF search');
+            return null;
+        }
 
         console.log(`[GIF] Searching with keywords: "${processedKeywords}"`);
 
-        const response = await axios.get(`${gifConfig.endpoint}/search`, {
+        try {
+            const response = await axios.get(`${gifConfig.endpoint}/search`, {
             params: {
                 api_key: config.GIPHY_API_KEY,
                 q: processedKeywords,
@@ -33,12 +54,22 @@ async function getRandomGif(keywords) {
             return gif.images.original.url;
         }
 
-        console.log('[GIF] No suitable GIFs found');
+        console.log('[GIF] No suitable GIFs found in search results');
         return null;
     } catch (error) {
-        console.error('[GIF] Error fetching GIF:', error.message);
+        if (error.response) {
+            console.error(`[GIF] API Error (${error.response.status}):`, error.response.data);
+        } else if (error.request) {
+            console.error('[GIF] Network Error:', error.message);
+        } else {
+            console.error('[GIF] Error:', error.message);
+        }
         return null;
     }
+} catch (error) {
+    console.error('[GIF] Error processing keywords:', error.message);
+    return null;
+}
 }
 
 // Simple token counter (approximation)
