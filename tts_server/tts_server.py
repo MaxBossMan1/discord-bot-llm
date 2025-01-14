@@ -1,4 +1,5 @@
 from flask import Flask, request, send_file, jsonify
+import time
 import os
 from threading import Lock
 from elevenlabs import generate, voices, set_api_key
@@ -31,8 +32,10 @@ def list_voices():
 @app.route('/tts/', methods=['POST'])
 def text_to_speech():
     try:
+        print("Received TTS request with form data:", dict(request.form))
         text = request.form.get('text', '')
-        voice_id = request.form.get('voice_id', 'Rachel')
+        voice_id = request.form.get('voice_id', '9BWtsMINqrJLrRacOk9x')  # Default to 'Aria' voice
+        print(f"Using text: {text}, voice_id: {voice_id}")
         
         if not text:
             return 'No text provided', 400
@@ -47,14 +50,21 @@ def text_to_speech():
             )
             
             # Save to a temporary file and ensure cleanup
-            temp_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            temp_file_path = os.path.join(temp_dir, f'speech_{int(time.time()*1000)}.wav')
             try:
-                temp_file.write(audio)
-                temp_file.flush()
-                temp_file.close()
+                with open(temp_file_path, 'wb') as f:
+                    f.write(audio)
+                
+                print(f"Audio file saved to: {temp_file_path}")
+                if not os.path.exists(temp_file_path):
+                    print("Error: File was not created!")
+                    return "Failed to create audio file", 500
                 
                 response = send_file(
-                    temp_file.name,
+                    temp_file_path,
                     mimetype="audio/wav",
                     as_attachment=True,
                     download_name="speech.wav"
@@ -68,11 +78,11 @@ def text_to_speech():
                 return response
             finally:
                 # Ensure file cleanup happens after response is sent
-                if os.path.exists(temp_file.name):
+                if os.path.exists(temp_file_path):
                     try:
-                        os.unlink(temp_file.name)
+                        os.unlink(temp_file_path)
                     except Exception as e:
-                        print(f"Warning: Could not delete temporary file {temp_file.name}: {e}")
+                        print(f"Warning: Could not delete temporary file {temp_file_path}: {e}")
     except Exception as e:
         print(f"Error in TTS: {str(e)}")
         return str(e), 500

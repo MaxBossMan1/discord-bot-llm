@@ -14,7 +14,7 @@ class TTSHandler {
         this.player = createAudioPlayer();
         this.connection = null;
         this.enabled = true;
-        this.voiceId = 'default';
+        this.voiceId = '1S8dlQj81Ty3soQ57nz7';  // Default to 'dafuck' voice
     }
 
     async connectToChannel(channel) {
@@ -42,7 +42,7 @@ class TTSHandler {
             // Call the TTS server
             const formData = new FormData();
             formData.append('text', text);
-            formData.append('speaker', this.voiceId);
+            formData.append('voice_id', this.voiceId);
             const response = await axios.post('http://localhost:8000/tts/', 
                 formData,
                 { 
