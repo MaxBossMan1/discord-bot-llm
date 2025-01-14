@@ -54,20 +54,50 @@ class TTSHandler {
                 }
             );
 
-            // Save the audio to a temporary file
-            const tempFile = path.join(__dirname, 'temp_audio.wav');
-            fs.writeFileSync(tempFile, response.data);
+            // Create a unique temporary file name
+            const tempFile = path.join(__dirname, `temp_audio_${Date.now()}.wav`);
+            
+            try {
+                // Save the audio to a temporary file
+                fs.writeFileSync(tempFile, response.data);
 
-            // Create and play the audio resource
-            const resource = createAudioResource(tempFile);
-            this.player.play(resource);
+                // Create and play the audio resource
+                const resource = createAudioResource(tempFile);
+                this.player.play(resource);
 
-            return new Promise((resolve) => {
-                this.player.once(AudioPlayerStatus.Idle, () => {
-                    fs.unlinkSync(tempFile);
-                    resolve(true);
+                return new Promise((resolve) => {
+                    const cleanup = () => {
+                        try {
+                            if (fs.existsSync(tempFile)) {
+                                fs.unlinkSync(tempFile);
+                            }
+                        } catch (err) {
+                            console.warn('Warning: Could not delete temporary file:', err);
+                        }
+                    };
+
+                    // Clean up on both successful completion and error
+                    this.player.once(AudioPlayerStatus.Idle, () => {
+                        cleanup();
+                        resolve(true);
+                    });
+
+                    this.player.once('error', () => {
+                        cleanup();
+                        resolve(false);
+                    });
                 });
-            });
+            } catch (error) {
+                // Clean up if we fail before playing
+                if (fs.existsSync(tempFile)) {
+                    try {
+                        fs.unlinkSync(tempFile);
+                    } catch (err) {
+                        console.warn('Warning: Could not delete temporary file:', err);
+                    }
+                }
+                throw error;
+            }
         } catch (error) {
             console.error('Error in TTS:', error);
             return false;
