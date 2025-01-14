@@ -91,6 +91,9 @@ class TTSHandler {
                         resolve(false);
                     });
                 });
+            } catch (error) {
+                console.error('Error creating or playing audio resource:', error);
+                return false;
             }
         } catch (error) {
             console.error('Error in TTS:', error);
