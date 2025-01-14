@@ -4,12 +4,13 @@ const { replaceUserMentions, getRandomGif } = require('./utils');
 const axios = require('axios');
 
 class DiscordBot {
-    constructor(memoryManager, textProcessor, imageProcessor, commandManager, ttsHandler) {
+    constructor(memoryManager, textProcessor, imageProcessor, commandManager, ttsHandler, musicModule) {
         this.memoryManager = memoryManager;
         this.textProcessor = textProcessor;
         this.imageProcessor = imageProcessor;
         this.commandManager = commandManager;
         this.ttsHandler = ttsHandler;
+        this.musicModule = musicModule;
         this.processingUsers = new Set(); // Track users with ongoing message processing
 
         this.client = new Client({
@@ -107,6 +108,12 @@ class DiscordBot {
                 );
 
                 await interaction.editReply(response);
+                return;
+            }
+
+            // Music commands
+            if (['play', 'skip', 'stop', 'queue'].includes(interaction.commandName)) {
+                await this.musicModule.handleCommand(interaction, interaction.commandName);
                 return;
             }
 

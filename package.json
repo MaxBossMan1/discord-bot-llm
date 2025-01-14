@@ -20,6 +20,8 @@
     "ffmpeg-static": "^5.2.0",
     "form-data": "^4.0.1",
     "libsodium-wrappers": "^0.7.15",
-    "sodium-native": "^4.3.1"
+    "play-dl": "^1.9.7",
+    "sodium-native": "^4.3.1",
+    "spotify-web-api-node": "^5.0.2"
   }
 }
