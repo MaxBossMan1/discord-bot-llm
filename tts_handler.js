@@ -54,23 +54,18 @@ class TTSHandler {
                 }
             );
 
-            // Create a unique temporary file name
-            const tempFile = path.join(__dirname, `temp_audio_${Date.now()}.mp3`);
-            
             try {
-                // Save the audio to a temporary file
-                fs.writeFileSync(tempFile, response.data);
-
-                // Create and play the audio resource
-                console.log('Creating audio resource from:', tempFile);
-                const resource = createAudioResource(tempFile, {
+                // Create an audio resource directly from the response data
+                const audioBuffer = Buffer.from(response.data);
+                const resource = createAudioResource(audioBuffer, {
                     inputType: 'mp3',
                     inlineVolume: true
                 });
+
                 if (!resource) {
                     throw new Error('Failed to create audio resource');
                 }
-                
+
                 // Add state change logging
                 this.player.on(AudioPlayerStatus.Playing, () => {
                     console.log('Audio player is now playing');
@@ -88,37 +83,14 @@ class TTSHandler {
                 console.log('Attempting to play audio resource');
 
                 return new Promise((resolve) => {
-                    const cleanup = () => {
-                        try {
-                            if (fs.existsSync(tempFile)) {
-                                fs.unlinkSync(tempFile);
-                            }
-                        } catch (err) {
-                            console.warn('Warning: Could not delete temporary file:', err);
-                        }
-                    };
-
-                    // Clean up on both successful completion and error
                     this.player.once(AudioPlayerStatus.Idle, () => {
-                        cleanup();
                         resolve(true);
                     });
 
                     this.player.once('error', () => {
-                        cleanup();
                         resolve(false);
                     });
                 });
-            } catch (error) {
-                // Clean up if we fail before playing
-                if (fs.existsSync(tempFile)) {
-                    try {
-                        fs.unlinkSync(tempFile);
-                    } catch (err) {
-                        console.warn('Warning: Could not delete temporary file:', err);
-                    }
-                }
-                throw error;
             }
         } catch (error) {
             console.error('Error in TTS:', error);
