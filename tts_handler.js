@@ -14,7 +14,7 @@ class TTSHandler {
         this.player = createAudioPlayer();
         this.connection = null;
         this.enabled = true;
-        this.voiceId = '9BWtsMINqrJLrRacOk9x';  // Default to 'Aria' voice
+        this.voiceId = '1S8dlQj81Ty3soQ57nz7';  // Default to 'dafuck' voice
     }
 
     async connectToChannel(channel) {
