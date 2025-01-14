@@ -52,13 +52,29 @@ class TrackInfo {
     }
 
     async getTrackInfo(query) {
-        // Check if it's a Spotify URL
-        if (query.includes('spotify.com')) {
-            return await this.getSpotifyTrackInfo(query);
-        }
-
-        // Check if it's a YouTube URL or search query
         try {
+            // Check if it's a Spotify URL
+            if (query.includes('spotify.com')) {
+                const spotifyInfo = await this.getSpotifyTrackInfo(query);
+                if (!spotifyInfo) return null;
+
+                // Search for the track on YouTube
+                const searchQuery = `${spotifyInfo.title} ${spotifyInfo.artist}`;
+                const searchResult = await play.search(searchQuery, { limit: 1 });
+                if (!searchResult || searchResult.length === 0) return null;
+
+                const video = searchResult[0];
+                return {
+                    title: spotifyInfo.title,
+                    artist: spotifyInfo.artist,
+                    duration: video.durationRaw,
+                    thumbnail: spotifyInfo.thumbnail,
+                    url: video.url,
+                    source: 'Spotify → YouTube'
+                };
+            }
+
+            // Check if it's a YouTube URL or search query
             const searchResult = await play.search(query, { limit: 1 });
             if (!searchResult || searchResult.length === 0) return null;
 
@@ -97,12 +113,39 @@ class TrackInfo {
     }
 
     async getPlaylistInfo(url) {
-        if (url.includes('spotify.com')) {
-            return await this.getSpotifyPlaylistInfo(url);
-        } else if (url.includes('youtube.com')) {
-            return await this.getYouTubePlaylistInfo(url);
+        try {
+            if (url.includes('spotify.com')) {
+                const spotifyInfo = await this.getSpotifyPlaylistInfo(url);
+                if (!spotifyInfo) return null;
+
+                // Convert Spotify tracks to YouTube tracks
+                const tracks = [];
+                for (const track of spotifyInfo.tracks) {
+                    const searchQuery = `${track.title} ${track.artist}`;
+                    const searchResult = await play.search(searchQuery, { limit: 1 });
+                    if (searchResult && searchResult.length > 0) {
+                        tracks.push({
+                            title: track.title,
+                            artist: track.artist,
+                            duration: searchResult[0].durationRaw,
+                            url: searchResult[0].url
+                        });
+                    }
+                }
+
+                return {
+                    ...spotifyInfo,
+                    tracks,
+                    source: 'Spotify → YouTube'
+                };
+            } else if (url.includes('youtube.com')) {
+                return await this.getYouTubePlaylistInfo(url);
+            }
+            return null;
+        } catch (error) {
+            console.error('Error getting playlist info:', error);
+            return null;
         }
-        return null;
     }
 
     async getSpotifyPlaylistInfo(url) {

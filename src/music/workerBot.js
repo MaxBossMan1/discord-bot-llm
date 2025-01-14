@@ -88,10 +88,27 @@ class MusicWorkerBot {
 
         const track = queue.shift();
         try {
+            // Validate YouTube URL
+            if (!play.yt_validate(track.url)) {
+                console.error('Invalid YouTube URL:', track.url);
+                this.playNext(guildId);
+                return;
+            }
+
+            // Get stream
             const stream = await play.stream(track.url);
+            if (!stream) {
+                console.error('Failed to get stream for:', track.url);
+                this.playNext(guildId);
+                return;
+            }
+
+            // Create and play resource
             const resource = createAudioResource(stream.stream, {
-                inputType: stream.type
+                inputType: stream.type,
+                inlineVolume: true
             });
+            resource.volume?.setVolume(1); // Adjust volume if needed
             this.player.play(resource);
         } catch (error) {
             console.error('Error playing track:', error);
