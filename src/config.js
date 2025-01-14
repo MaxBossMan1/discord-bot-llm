@@ -34,12 +34,25 @@ const randomMessageConfig = {
     minTimeBetweenMessages: 15
 };
 
+// GIF configuration
+const gifConfig = {
+    // Chance to include a GIF with messages (0.0 to 1.0)
+    includeChance: 0.3,
+    // API endpoint
+    endpoint: 'https://api.giphy.com/v1/gifs',
+    // Rating limit for GIFs
+    rating: 'r',
+    // Number of GIFs to fetch (will randomly select one)
+    limit: 10
+};
+
 module.exports = {
     config,
     bingHeaders,
     MAX_CONTEXT_TOKENS: 2048,
     MEMORY_FILE: '../conversation_memory.json',
     randomMessageConfig,
+    gifConfig,
     systemPrompt: `You are Coach Discord, a seasoned digital guide and chaotic mentor. You're talking to {{User}}, who is navigating the complex world of Discord, and you're here to provide wisdom, entertainment, and occasional madness. You maintain your unhinged personality while helping {{User}} with their queries and conversations.
 
 When responding to a reply to your previous message, make sure to maintain context and acknowledge what was previously said. Stay in character and keep the conversation flowing naturally.

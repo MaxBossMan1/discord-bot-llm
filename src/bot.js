@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
-const { config } = require('./config');
-const { replaceUserMentions } = require('./utils');
+const { config, gifConfig } = require('./config');
+const { replaceUserMentions, getRandomGif } = require('./utils');
 const axios = require('axios');
 
 class DiscordBot {
@@ -173,6 +173,37 @@ class DiscordBot {
         }
     }
 
+    async sendMessageWithGif(channel, content, options = {}) {
+        try {
+            // Decide whether to include a GIF
+            const shouldIncludeGif = Math.random() < gifConfig.includeChance;
+            
+            if (shouldIncludeGif) {
+                const gifUrl = await getRandomGif(content);
+                if (gifUrl) {
+                    return await channel.send({
+                        ...options,
+                        content: content,
+                        files: [gifUrl]
+                    });
+                }
+            }
+
+            // If no GIF or GIF fetch failed, send message without GIF
+            return await channel.send({
+                ...options,
+                content: content
+            });
+        } catch (error) {
+            console.error('[GIF] Error sending message with GIF:', error);
+            // Fallback to sending message without GIF
+            return await channel.send({
+                ...options,
+                content: content
+            });
+        }
+    }
+
     async handleMessage(message) {
         // Ignore messages from bots and messages starting with "-"
         if (message.author.bot ||
@@ -276,16 +307,26 @@ class DiscordBot {
             // Send text message first
             const MAX_LENGTH = 2000;
             if (response.length <= MAX_LENGTH) {
-                await message.reply({
-                    content: response,
-                    allowedMentions: { parse: ['users'] }  // Allow user mentions
-                });
+                await this.sendMessageWithGif(
+                    message.channel,
+                    response,
+                    {
+                        reply: { messageReference: message.id },
+                        allowedMentions: { parse: ['users'] }
+                    }
+                );
             } else {
                 const chunks = response.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g'));
-                await message.reply({
-                    content: chunks[0],
-                    allowedMentions: { parse: ['users'] }
-                });
+                // Send first chunk with GIF possibility
+                await this.sendMessageWithGif(
+                    message.channel,
+                    chunks[0],
+                    {
+                        reply: { messageReference: message.id },
+                        allowedMentions: { parse: ['users'] }
+                    }
+                );
+                // Send remaining chunks without GIFs
                 for (let i = 1; i < chunks.length; i++) {
                     await message.channel.send({
                         content: chunks[i],
@@ -417,10 +458,11 @@ class DiscordBot {
     - Length: ${response.length} characters
     - Response: "${response.substring(0, 100)}${response.length > 100 ? '...' : ''}"`);
 
-                            await channel.send({
-                                content: response,
-                                allowedMentions: { parse: ['users'] }
-                            });
+                            await this.sendMessageWithGif(
+                                channel,
+                                response,
+                                { allowedMentions: { parse: ['users'] } }
+                            );
 
                             if (this.ttsHandler.isEnabled()) {
                                 console.log('[Random Timer] TTS is enabled, speaking response');

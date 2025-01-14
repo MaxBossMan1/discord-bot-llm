@@ -1,5 +1,45 @@
 const axios = require('axios');
-const { bingHeaders, config } = require('./config');
+const { bingHeaders, config, gifConfig } = require('./config');
+
+// Function to fetch a random GIF based on keywords
+async function getRandomGif(keywords) {
+    try {
+        // Extract emotion-related words from the keywords
+        const emotionKeywords = keywords.match(/\*(.*?)\*/g) || [];
+        const processedKeywords = emotionKeywords
+            .map(k => k.replace(/\*/g, '').toLowerCase())
+            .concat(keywords.split(' ').slice(0, 3))
+            .filter(k => k.length > 2)
+            .join(' ');
+
+        console.log(`[GIF] Searching with keywords: "${processedKeywords}"`);
+
+        const response = await axios.get(`${gifConfig.endpoint}/search`, {
+            params: {
+                api_key: config.GIPHY_API_KEY,
+                q: processedKeywords,
+                limit: gifConfig.limit,
+                rating: gifConfig.rating,
+                lang: 'en'
+            }
+        });
+
+        if (response.data.data && response.data.data.length > 0) {
+            // Randomly select one GIF from the results
+            const randomIndex = Math.floor(Math.random() * response.data.data.length);
+            const gif = response.data.data[randomIndex];
+            
+            console.log(`[GIF] Found GIF: ${gif.title}`);
+            return gif.images.original.url;
+        }
+
+        console.log('[GIF] No suitable GIFs found');
+        return null;
+    } catch (error) {
+        console.error('[GIF] Error fetching GIF:', error.message);
+        return null;
+    }
+}
 
 // Simple token counter (approximation)
 function countTokens(text) {
@@ -71,5 +111,6 @@ async function bingSearch(query) {
 module.exports = {
     countTokens,
     replaceUserMentions,
-    bingSearch
+    bingSearch,
+    getRandomGif
 };
