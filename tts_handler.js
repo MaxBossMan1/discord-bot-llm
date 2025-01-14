@@ -127,19 +127,16 @@ class TTSHandler {
             }
             
             return true;
-            } catch (error) {
-                console.error('Error creating or playing audio resource:', error);
-                // Clean up the temporary file on error
+        } catch (error) {
+            console.error('Error in TTS:', error.response?.data || error.message);
+            if (typeof tempFile !== 'undefined') {
                 try {
                     fs.unlinkSync(tempFile);
                     console.log('Temporary file cleaned up after error:', tempFile);
                 } catch (err) {
                     console.error('Error cleaning up temp file:', err);
                 }
-                return false;
             }
-        } catch (error) {
-            console.error('Error in TTS:', error.response?.data || error.message);
             return false;
         }
     }
