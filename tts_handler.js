@@ -55,9 +55,12 @@ class TTSHandler {
             );
 
             try {
-                // Create an audio resource directly from the response data
-                const audioBuffer = Buffer.from(response.data);
-                const resource = createAudioResource(audioBuffer, {
+                // Save the audio buffer to a temporary file
+                const tempFile = path.join(__dirname, `temp_${Date.now()}.mp3`);
+                fs.writeFileSync(tempFile, response.data);
+
+                // Create an audio resource from the file
+                const resource = createAudioResource(tempFile, {
                     inputType: 'mp3',
                     inlineVolume: true
                 });
@@ -73,14 +76,26 @@ class TTSHandler {
                 
                 this.player.on(AudioPlayerStatus.Idle, () => {
                     console.log('Audio player is now idle');
+                    // Clean up the temporary file
+                    try {
+                        fs.unlinkSync(tempFile);
+                    } catch (err) {
+                        console.error('Error cleaning up temp file:', err);
+                    }
                 });
                 
                 this.player.on('error', error => {
                     console.error('Error in audio player:', error);
+                    // Clean up the temporary file on error
+                    try {
+                        fs.unlinkSync(tempFile);
+                    } catch (err) {
+                        console.error('Error cleaning up temp file:', err);
+                    }
                 });
 
                 this.player.play(resource);
-                console.log('Attempting to play audio resource');
+                console.log('Attempting to play audio resource from file:', tempFile);
 
                 return new Promise((resolve) => {
                     this.player.once(AudioPlayerStatus.Idle, () => {
@@ -91,6 +106,9 @@ class TTSHandler {
                         resolve(false);
                     });
                 });
+            } catch (error) {
+                console.error('Error creating or playing audio resource:', error);
+                return false;
             }
         } catch (error) {
             console.error('Error in TTS:', error);
