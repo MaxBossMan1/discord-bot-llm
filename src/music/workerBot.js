@@ -8,6 +8,8 @@ const {
     StreamType
 } = require('@discordjs/voice');
 const play = require('play-dl');
+const TrackDownloader = require('./trackDownloader');
+const fs = require('fs');
 
 class MusicWorkerBot {
     constructor(trackInfo, config) {
@@ -28,6 +30,7 @@ class MusicWorkerBot {
         });
         this.queue = new Map();
         this.connection = null;
+        this.downloader = new TrackDownloader();
         
         this.setupEventHandlers();
     }
@@ -127,29 +130,42 @@ class MusicWorkerBot {
             this.queue.set(guildId, []);
         }
 
-        if (isPlaylist) {
-            const playlistInfo = await this.trackInfo.getPlaylistInfo(query);
-            if (!playlistInfo) return null;
+        try {
+            if (isPlaylist) {
+                const playlistInfo = await this.trackInfo.getPlaylistInfo(query);
+                if (!playlistInfo) return null;
 
-            // Add all tracks from playlist to queue
-            this.queue.get(guildId).push(...playlistInfo.tracks);
+                // Add all tracks from playlist to queue
+                this.queue.get(guildId).push(...playlistInfo.tracks);
 
-            if (this.player.state.status === AudioPlayerStatus.Idle) {
-                this.playNext(guildId);
+                // Start preloading first few tracks
+                this.downloader.preloadTracks(playlistInfo.tracks)
+                    .catch(error => console.error('Error preloading playlist tracks:', error));
+
+                if (this.player.state.status === AudioPlayerStatus.Idle) {
+                    await this.playNext(guildId);
+                }
+
+                return playlistInfo;
+            } else {
+                const trackInfo = await this.trackInfo.getTrackInfo(query);
+                if (!trackInfo) return null;
+
+                this.queue.get(guildId).push(trackInfo);
+
+                // Start downloading the track immediately
+                this.downloader.downloadTrack(trackInfo.url)
+                    .catch(error => console.error('Error downloading track:', error));
+
+                if (this.player.state.status === AudioPlayerStatus.Idle) {
+                    await this.playNext(guildId);
+                }
+
+                return trackInfo;
             }
-
-            return playlistInfo;
-        } else {
-            const trackInfo = await this.trackInfo.getTrackInfo(query);
-            if (!trackInfo) return null;
-
-            this.queue.get(guildId).push(trackInfo);
-
-            if (this.player.state.status === AudioPlayerStatus.Idle) {
-                this.playNext(guildId);
-            }
-
-            return trackInfo;
+        } catch (error) {
+            console.error('Error adding to queue:', error);
+            return null;
         }
     }
 
@@ -160,8 +176,8 @@ class MusicWorkerBot {
             return;
         }
 
-        const track = queue.shift();
-        console.log('Playing next track:', track.title);
+        const track = queue[0]; // Don't shift yet, wait until we confirm playback
+        console.log('Preparing to play:', track.title);
 
         try {
             // Make sure we're still connected
@@ -170,73 +186,49 @@ class MusicWorkerBot {
                 return;
             }
 
-            // Validate YouTube URL
-            if (!play.yt_validate(track.url)) {
-                console.error('Invalid YouTube URL:', track.url);
-                this.playNext(guildId);
-                return;
-            }
+            // Download the track (or get it from cache)
+            console.log('Getting track file for:', track.title);
+            const filePath = await this.downloader.downloadTrack(track.url);
+            console.log('Track file ready:', filePath);
 
-            // Get stream with specific options
-            console.log('Getting stream for:', track.url);
-            const stream = await play.stream(track.url, {
-                discordPlayerCompatibility: true,
-                quality: 2  // Use high quality
-            });
-
-            if (!stream) {
-                console.error('Failed to get stream');
-                this.playNext(guildId);
-                return;
-            }
-            console.log('Got stream:', stream.type);
-
-            // Create resource with specific options
-            const resource = createAudioResource(stream.stream, {
-                inputType: stream.type,
+            // Create resource from file
+            const resource = createAudioResource(fs.createReadStream(filePath), {
+                inputType: StreamType.OggOpus,
                 inlineVolume: true,
                 silencePaddingFrames: 5
             });
 
             if (!resource) {
                 console.error('Failed to create audio resource');
+                queue.shift(); // Remove failed track
                 this.playNext(guildId);
                 return;
             }
 
             // Set volume
             if (resource.volume) {
-                resource.volume.setVolume(0.5); // Reduced volume
+                resource.volume.setVolume(0.5);
             }
 
             // Stop current playback if any
             this.player.stop();
 
+            // Remove the track from queue now that we're sure we can play it
+            queue.shift();
+
+            // Start preloading next tracks
+            if (queue.length > 0) {
+                this.downloader.preloadTracks(queue)
+                    .catch(error => console.error('Error preloading next tracks:', error));
+            }
+
             // Play the resource
-            console.log('Playing resource...');
+            console.log('Playing track from file:', track.title);
             this.player.play(resource);
 
-            // Setup error handling for the stream
-            stream.stream.on('error', (error) => {
-                console.error('Stream error:', error);
-                this.playNext(guildId);
-            });
-
-            // Monitor stream end
-            stream.stream.on('end', () => {
-                console.log('Stream ended');
-            });
-
-            // Additional stream event monitoring
-            stream.stream.on('close', () => {
-                console.log('Stream closed');
-            });
-
-            stream.stream.on('finish', () => {
-                console.log('Stream finished');
-            });
         } catch (error) {
             console.error('Error playing track:', error);
+            queue.shift(); // Remove failed track
             this.playNext(guildId);
         }
     }
