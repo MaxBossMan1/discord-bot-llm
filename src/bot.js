@@ -337,7 +337,9 @@ class DiscordBot {
 
             // Then speak the response if TTS is enabled
             if (this.ttsHandler.isEnabled()) {
-                await this.ttsHandler.speak(response);
+                const guild = this.client.guilds.cache.get(config.TARGET_GUILD_ID);
+                const voiceChannel = guild?.channels.cache.get(config.VOICE_CHANNEL_ID);
+                await this.ttsHandler.speak(response, voiceChannel);
             }
 
         } catch (error) {

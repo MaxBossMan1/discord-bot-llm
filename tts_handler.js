@@ -40,8 +40,14 @@ class TTSHandler {
         }
     }
 
-    async speak(text) {
+    async speak(text, channel) {
         if (!this.connection) return false;
+
+        // Check if there are users in the voice channel
+        if (!channel || channel.members.size <= 1) {  // <= 1 because the bot counts as a member
+            console.log('No users in voice channel, skipping TTS');
+            return false;
+        }
 
         try {
             // Call ElevenLabs API directly
