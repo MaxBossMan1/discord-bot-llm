@@ -1,10 +1,13 @@
 {
     "DISCORD_TOKEN": "",
+    "MUSIC_BOT_TOKEN": "",
     "MSTY_API_URL": "http://localhost:1234",
     "TARGET_GUILD_ID": "",
     "TARGET_CHANNEL_ID": "",
     "VOICE_CHANNEL_ID": "",
     "MEMORY_LIMIT": 10,
     "BING_API_KEY": "",
-    "BING_ENDPOINT": "https://api.bing.microsoft.com/v7.0/search"
+    "BING_ENDPOINT": "https://api.bing.microsoft.com/v7.0/search",
+    "SPOTIFY_CLIENT_ID": "",
+    "SPOTIFY_CLIENT_SECRET": ""
 }

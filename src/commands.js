@@ -39,6 +39,90 @@ class CommandManager {
 
     getSlashCommands() {
         return [
+            // Music commands
+            new SlashCommandBuilder()
+                .setName('play')
+                .setDescription('Play a song')
+                .addStringOption(option =>
+                    option.setName('query')
+                        .setDescription('The song to play (URL or search query)')
+                        .setRequired(true)),
+            new SlashCommandBuilder()
+                .setName('skip')
+                .setDescription('Skip the current song'),
+            new SlashCommandBuilder()
+                .setName('stop')
+                .setDescription('Stop playback and clear the queue'),
+            new SlashCommandBuilder()
+                .setName('queue')
+                .setDescription('Show the current music queue'),
+            new SlashCommandBuilder()
+                .setName('playlist')
+                .setDescription('Manage your playlists')
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('create')
+                        .setDescription('Create a new playlist')
+                        .addStringOption(option =>
+                            option.setName('name')
+                                .setDescription('Name of the playlist')
+                                .setRequired(true))
+                        .addStringOption(option =>
+                            option.setName('description')
+                                .setDescription('Description of the playlist')
+                                .setRequired(false)))
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('add')
+                        .setDescription('Add a track to a playlist')
+                        .addStringOption(option =>
+                            option.setName('name')
+                                .setDescription('Name of the playlist')
+                                .setRequired(true))
+                        .addStringOption(option =>
+                            option.setName('query')
+                                .setDescription('Track to add (URL or search query)')
+                                .setRequired(true)))
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('remove')
+                        .setDescription('Remove a track from a playlist')
+                        .addStringOption(option =>
+                            option.setName('name')
+                                .setDescription('Name of the playlist')
+                                .setRequired(true))
+                        .addIntegerOption(option =>
+                            option.setName('index')
+                                .setDescription('Track number to remove')
+                                .setRequired(true)))
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('delete')
+                        .setDescription('Delete a playlist')
+                        .addStringOption(option =>
+                            option.setName('name')
+                                .setDescription('Name of the playlist')
+                                .setRequired(true)))
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('list')
+                        .setDescription('List all your playlists'))
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('view')
+                        .setDescription('View a playlist\'s contents')
+                        .addStringOption(option =>
+                            option.setName('name')
+                                .setDescription('Name of the playlist')
+                                .setRequired(true)))
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('play')
+                        .setDescription('Play a playlist')
+                        .addStringOption(option =>
+                            option.setName('name')
+                                .setDescription('Name of the playlist')
+                                .setRequired(true))),
             // Fun commands
             new SlashCommandBuilder()
                 .setName('story')
