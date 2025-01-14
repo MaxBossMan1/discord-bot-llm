@@ -14,7 +14,13 @@ const bingHeaders = {
 };
 
 // Validate required config values
-const requiredConfig = ['DISCORD_TOKEN', 'MSTY_API_URL', 'TARGET_GUILD_ID', 'TARGET_CHANNEL_ID'];
+const requiredConfig = [
+    'DISCORD_TOKEN',
+    'MSTY_API_URL',
+    'TARGET_GUILD_ID',
+    'TARGET_CHANNEL_ID',
+    'GIPHY_API_KEY'  // Added for GIF functionality
+];
 const missingConfig = requiredConfig.filter(key => !config[key]);
 
 if (missingConfig.length > 0) {
