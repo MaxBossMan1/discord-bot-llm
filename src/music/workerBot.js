@@ -1,5 +1,12 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { 
+    joinVoiceChannel, 
+    createAudioPlayer, 
+    createAudioResource, 
+    AudioPlayerStatus,
+    NoSubscriberBehavior,
+    StreamType
+} = require('@discordjs/voice');
 const play = require('play-dl');
 
 class MusicWorkerBot {
@@ -15,8 +22,8 @@ class MusicWorkerBot {
 
         this.player = createAudioPlayer({
             behaviors: {
-                noSubscriber: 'play',
-                maxMissedFrames: 50
+                noSubscriber: NoSubscriberBehavior.Play,
+                maxMissedFrames: 100
             }
         });
         this.queue = new Map();
@@ -157,6 +164,12 @@ class MusicWorkerBot {
         console.log('Playing next track:', track.title);
 
         try {
+            // Make sure we're still connected
+            if (!this.connection) {
+                console.error('No voice connection');
+                return;
+            }
+
             // Validate YouTube URL
             if (!play.yt_validate(track.url)) {
                 console.error('Invalid YouTube URL:', track.url);
@@ -164,20 +177,25 @@ class MusicWorkerBot {
                 return;
             }
 
-            // Get stream
+            // Get stream with specific options
             console.log('Getting stream for:', track.url);
-            const stream = await play.stream(track.url);
+            const stream = await play.stream(track.url, {
+                discordPlayerCompatibility: true,
+                quality: 2  // Use high quality
+            });
+
             if (!stream) {
-                console.error('Failed to get stream for:', track.url);
+                console.error('Failed to get stream');
                 this.playNext(guildId);
                 return;
             }
             console.log('Got stream:', stream.type);
 
-            // Create resource
+            // Create resource with specific options
             const resource = createAudioResource(stream.stream, {
                 inputType: stream.type,
-                inlineVolume: true
+                inlineVolume: true,
+                silencePaddingFrames: 5
             });
 
             if (!resource) {
@@ -188,18 +206,34 @@ class MusicWorkerBot {
 
             // Set volume
             if (resource.volume) {
-                resource.volume.setVolume(1);
+                resource.volume.setVolume(0.5); // Reduced volume
             }
+
+            // Stop current playback if any
+            this.player.stop();
 
             // Play the resource
             console.log('Playing resource...');
-            const success = this.player.play(resource);
-            console.log('Play result:', success ? 'success' : 'failed');
+            this.player.play(resource);
 
             // Setup error handling for the stream
             stream.stream.on('error', (error) => {
                 console.error('Stream error:', error);
                 this.playNext(guildId);
+            });
+
+            // Monitor stream end
+            stream.stream.on('end', () => {
+                console.log('Stream ended');
+            });
+
+            // Additional stream event monitoring
+            stream.stream.on('close', () => {
+                console.log('Stream closed');
+            });
+
+            stream.stream.on('finish', () => {
+                console.log('Stream finished');
             });
         } catch (error) {
             console.error('Error playing track:', error);
