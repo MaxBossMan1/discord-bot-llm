@@ -1,4 +1,3 @@
 flask
 elevenlabs==0.2.24
 python-dotenv
-pydub
