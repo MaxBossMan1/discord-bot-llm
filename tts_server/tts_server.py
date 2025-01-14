@@ -46,22 +46,33 @@ def text_to_speech():
                 model="eleven_multilingual_v2"
             )
             
-            # Save to a temporary file
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+            # Save to a temporary file and ensure cleanup
+            temp_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            try:
                 temp_file.write(audio)
-                output_path = temp_file.name
-            
-            response = send_file(
-                output_path,
-                mimetype="audio/wav",
-                as_attachment=True,
-                download_name="speech.wav"
-            )
-            
-            # Clean up the temporary file after sending
-            os.unlink(output_path)
-            
-            return response
+                temp_file.flush()
+                temp_file.close()
+                
+                response = send_file(
+                    temp_file.name,
+                    mimetype="audio/wav",
+                    as_attachment=True,
+                    download_name="speech.wav"
+                )
+                
+                # Add headers to prevent caching
+                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+                
+                return response
+            finally:
+                # Ensure file cleanup happens after response is sent
+                if os.path.exists(temp_file.name):
+                    try:
+                        os.unlink(temp_file.name)
+                    except Exception as e:
+                        print(f"Warning: Could not delete temporary file {temp_file.name}: {e}")
     except Exception as e:
         print(f"Error in TTS: {str(e)}")
         return str(e), 500
