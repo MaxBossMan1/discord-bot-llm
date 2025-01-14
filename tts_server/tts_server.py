@@ -31,8 +31,10 @@ def list_voices():
 @app.route('/tts/', methods=['POST'])
 def text_to_speech():
     try:
+        print("Received TTS request with form data:", dict(request.form))
         text = request.form.get('text', '')
         voice_id = request.form.get('voice_id', '9BWtsMINqrJLrRacOk9x')  # Default to 'Aria' voice
+        print(f"Using text: {text}, voice_id: {voice_id}")
         
         if not text:
             return 'No text provided', 400
