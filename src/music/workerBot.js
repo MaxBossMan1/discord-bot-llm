@@ -13,7 +13,12 @@ class MusicWorkerBot {
             ]
         });
 
-        this.player = createAudioPlayer();
+        this.player = createAudioPlayer({
+            behaviors: {
+                noSubscriber: 'play',
+                maxMissedFrames: 50
+            }
+        });
         this.queue = new Map();
         this.connection = null;
         
@@ -26,29 +31,88 @@ class MusicWorkerBot {
         });
 
         this.player.on(AudioPlayerStatus.Idle, () => {
+            console.log('Player is idle, playing next track...');
             this.playNext();
         });
 
+        this.player.on(AudioPlayerStatus.Playing, () => {
+            console.log('Player started playing');
+        });
+
+        this.player.on(AudioPlayerStatus.Buffering, () => {
+            console.log('Player is buffering');
+        });
+
+        this.player.on(AudioPlayerStatus.AutoPaused, () => {
+            console.log('Player auto-paused');
+        });
+
         this.player.on('error', error => {
-            console.error('Error:', error.message);
+            console.error('Player error:', error.message);
             this.playNext();
+        });
+
+        this.player.on('stateChange', (oldState, newState) => {
+            console.log(`Player state changed from ${oldState.status} to ${newState.status}`);
         });
     }
 
     async connectToChannel(channelId, guildId) {
-        const guild = this.client.guilds.cache.get(guildId);
-        const channel = guild.channels.cache.get(channelId);
+        try {
+            const guild = this.client.guilds.cache.get(guildId);
+            const channel = guild.channels.cache.get(channelId);
 
-        if (!channel) return false;
+            if (!channel) {
+                console.error('Channel not found:', channelId);
+                return false;
+            }
 
-        this.connection = joinVoiceChannel({
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            adapterCreator: channel.guild.voiceAdapterCreator,
-        });
+            // Destroy existing connection if any
+            if (this.connection) {
+                this.connection.destroy();
+                this.connection = null;
+            }
 
-        this.connection.subscribe(this.player);
-        return true;
+            // Create new connection
+            this.connection = joinVoiceChannel({
+                channelId: channel.id,
+                guildId: channel.guild.id,
+                adapterCreator: channel.guild.voiceAdapterCreator,
+                selfDeaf: false,
+                selfMute: false
+            });
+
+            // Handle connection events
+            this.connection.on('stateChange', (oldState, newState) => {
+                console.log(`Connection state changed from ${oldState.status} to ${newState.status}`);
+                if (newState.status === 'disconnected') {
+                    this.connection = null;
+                }
+            });
+
+            // Subscribe player to connection
+            this.connection.subscribe(this.player);
+
+            // Wait for ready state
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('Connection timeout'));
+                }, 10000);
+
+                this.connection.on('stateChange', (_, newState) => {
+                    if (newState.status === 'ready') {
+                        clearTimeout(timeout);
+                        resolve();
+                    }
+                });
+            });
+
+            console.log('Successfully connected to voice channel:', channel.name);
+            return true;
+        } catch (error) {
+            console.error('Error connecting to voice channel:', error);
+            return false;
+        }
     }
 
     async addToQueue(guildId, query, isPlaylist = false) {
@@ -84,9 +148,14 @@ class MusicWorkerBot {
 
     async playNext(guildId) {
         const queue = this.queue.get(guildId);
-        if (!queue || queue.length === 0) return;
+        if (!queue || queue.length === 0) {
+            console.log('Queue is empty');
+            return;
+        }
 
         const track = queue.shift();
+        console.log('Playing next track:', track.title);
+
         try {
             // Validate YouTube URL
             if (!play.yt_validate(track.url)) {
@@ -96,20 +165,42 @@ class MusicWorkerBot {
             }
 
             // Get stream
+            console.log('Getting stream for:', track.url);
             const stream = await play.stream(track.url);
             if (!stream) {
                 console.error('Failed to get stream for:', track.url);
                 this.playNext(guildId);
                 return;
             }
+            console.log('Got stream:', stream.type);
 
-            // Create and play resource
+            // Create resource
             const resource = createAudioResource(stream.stream, {
                 inputType: stream.type,
                 inlineVolume: true
             });
-            resource.volume?.setVolume(1); // Adjust volume if needed
-            this.player.play(resource);
+
+            if (!resource) {
+                console.error('Failed to create audio resource');
+                this.playNext(guildId);
+                return;
+            }
+
+            // Set volume
+            if (resource.volume) {
+                resource.volume.setVolume(1);
+            }
+
+            // Play the resource
+            console.log('Playing resource...');
+            const success = this.player.play(resource);
+            console.log('Play result:', success ? 'success' : 'failed');
+
+            // Setup error handling for the stream
+            stream.stream.on('error', (error) => {
+                console.error('Stream error:', error);
+                this.playNext(guildId);
+            });
         } catch (error) {
             console.error('Error playing track:', error);
             this.playNext(guildId);
