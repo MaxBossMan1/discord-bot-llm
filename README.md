@@ -83,9 +83,11 @@ node index.js
 
 ### Text-to-Speech (TTS)
 - Real-time voice synthesis in voice channels
-- Voice cloning capability using YourTTS
+- Voice cloning capability using ElevenLabs
 - Multiple voice profile support
-- Speaks responses while also sending text messages
+- Speaks responses only when users are present in the voice channel
+- Automatically skips TTS when voice channel is empty
+- Sends text messages regardless of TTS status
 
 ## Commands
 
