@@ -1,11 +1,11 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
-const { config } = require('../config');
 const play = require('play-dl');
 
 class MusicWorkerBot {
-    constructor(trackInfo) {
+    constructor(trackInfo, config) {
         this.trackInfo = trackInfo;
+        this.config = config;
         this.client = new Client({
             intents: [
                 GatewayIntentBits.Guilds,

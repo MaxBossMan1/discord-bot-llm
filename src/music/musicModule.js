@@ -7,10 +7,10 @@ const play = require('play-dl');
 
 class MusicModule {
     constructor(config) {
-        this.trackInfo = new TrackInfo(config);
-        this.workerBot = new MusicWorkerBot(this.trackInfo);
-        this.playlistManager = new PlaylistManager();
         this.config = config;
+        this.trackInfo = new TrackInfo(config);
+        this.workerBot = new MusicWorkerBot(this.trackInfo, config);
+        this.playlistManager = new PlaylistManager();
     }
 
     start(token) {

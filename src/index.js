@@ -6,6 +6,7 @@ const CommandManager = require('./commands');
 const { bingSearch } = require('./utils');
 const DiscordBot = require('./bot');
 const MusicModule = require('./music/musicModule');
+const { config } = require('./config');
 
 // Initialize components
 const memoryManager = new MemoryManager();
