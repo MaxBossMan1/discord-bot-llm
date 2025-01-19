@@ -253,105 +253,108 @@ class DiscordBot {
             let response;
             let prompt;
 
-            // Check if this is a reply to a message
-            if (message.reference && message.reference.messageId) {
-                try {
-                    const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
-                    
-                    // Only process if it's a reply to the bot's message
-                    if (repliedMessage.author.id === this.client.user.id) {
-                        console.log(`[Reply Context] Found reply to bot's message:
-    Original: "${repliedMessage.content.substring(0, 100)}${repliedMessage.content.length > 100 ? '...' : ''}"
-    Reply: "${message.content.substring(0, 100)}${message.content.length > 100 ? '...' : ''}"`);
+            // Wrap all async operations in a single async block to ensure proper error handling
+            await (async () => {
+                // Check if this is a reply to a message
+                if (message.reference && message.reference.messageId) {
+                    try {
+                        const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
                         
-                        // Combine the original message and reply for context
-                        prompt = `Previous message: "${repliedMessage.content}"\nUser's reply: "${message.content}"`;
+                        // Only process if it's a reply to the bot's message
+                        if (repliedMessage.author.id === this.client.user.id) {
+                            console.log(`[Reply Context] Found reply to bot's message:
+        Original: "${repliedMessage.content.substring(0, 100)}${repliedMessage.content.length > 100 ? '...' : ''}"
+        Reply: "${message.content.substring(0, 100)}${message.content.length > 100 ? '...' : ''}"`);
+                            
+                            // Combine the original message and reply for context
+                            prompt = `Previous message: "${repliedMessage.content}"\nUser's reply: "${message.content}"`;
+                        }
+                    } catch (error) {
+                        console.error('Error fetching replied message:', error);
                     }
-                } catch (error) {
-                    console.error('Error fetching replied message:', error);
                 }
-            }
 
-            // If no valid reply context was set, use the message content directly
-            if (!prompt) {
-                prompt = message.content;
-            }
+                // If no valid reply context was set, use the message content directly
+                if (!prompt) {
+                    prompt = message.content;
+                }
 
-            // Replace mentions in the prompt with usernames
-            const processedPrompt = await replaceUserMentions(prompt, message);
+                // Replace mentions in the prompt with usernames
+                const processedPrompt = await replaceUserMentions(prompt, message);
 
-            // Check if message contains an image
-            if (message.attachments.size > 0) {
-                const attachment = message.attachments.first();
+                // Check if message contains an image
+                if (message.attachments.size > 0) {
+                    const attachment = message.attachments.first();
 
-                // Validate attachment
-                if (!attachment.contentType) {
-                    response = "Hey fucknuts, that file doesn't have a content type! What kind of sketchy shit are you trying to pull? *narrows digital eyes*";
-                } else if (!attachment.contentType.startsWith('image/')) {
-                    response = "That's not a fucking image! What, you think I can process your fancy " +
-                        attachment.contentType.split('/')[1] + " files? Get outta here! *throws virtual chair*";
-                } else if (attachment.size > 10 * 1024 * 1024) { // 10MB limit
-                    response = "Holy shit, that image is huge! I'm not downloading your 4K anime wallpapers, you weeb! Keep it under 10MB! *digital nose bleed*";
+                    // Validate attachment
+                    if (!attachment.contentType) {
+                        response = "Hey fucknuts, that file doesn't have a content type! What kind of sketchy shit are you trying to pull? *narrows digital eyes*";
+                    } else if (!attachment.contentType.startsWith('image/')) {
+                        response = "That's not a fucking image! What, you think I can process your fancy " +
+                            attachment.contentType.split('/')[1] + " files? Get outta here! *throws virtual chair*";
+                    } else if (attachment.size > 10 * 1024 * 1024) { // 10MB limit
+                        response = "Holy shit, that image is huge! I'm not downloading your 4K anime wallpapers, you weeb! Keep it under 10MB! *digital nose bleed*";
+                    } else {
+                        // Get the attachment directly from Discord
+                        const attachmentUrl = attachment.proxyURL || attachment.url;
+                        console.log('Processing image attachment:', {
+                            contentType: attachment.contentType,
+                            size: attachment.size,
+                            url: attachmentUrl
+                        });
+
+                        response = await this.imageProcessor.processImage(
+                            attachment,
+                            processedPrompt || 'What do you see in this image?',
+                            message.author.id,
+                            message
+                        );
+                    }
                 } else {
-                    // Get the attachment directly from Discord
-                    const attachmentUrl = attachment.proxyURL || attachment.url;
-                    console.log('Processing image attachment:', {
-                        contentType: attachment.contentType,
-                        size: attachment.size,
-                        url: attachmentUrl
-                    });
+                    response = await this.textProcessor.processText(processedPrompt, message.author.id, message, message.author.username);
+                }
 
-                    response = await this.imageProcessor.processImage(
-                        attachment,
-                        processedPrompt || 'What do you see in this image?',
-                        message.author.id,
-                        message
+                // Add the interaction to memory with processed mentions
+                await this.memoryManager.addToConversationHistory(message.author.id, processedPrompt, response);
+
+                // Send text message first
+                const MAX_LENGTH = 2000;
+                if (response.length <= MAX_LENGTH) {
+                    await this.sendMessageWithGif(
+                        message.channel,
+                        response,
+                        {
+                            reply: { messageReference: message.id },
+                            allowedMentions: { parse: ['users'] }
+                        }
                     );
-                }
-            } else {
-                response = await this.textProcessor.processText(processedPrompt, message.author.id, message, message.author.username);
-            }
-
-            // Add the interaction to memory with processed mentions
-            this.memoryManager.addToConversationHistory(message.author.id, processedPrompt, response);
-
-            // Send text message first
-            const MAX_LENGTH = 2000;
-            if (response.length <= MAX_LENGTH) {
-                await this.sendMessageWithGif(
-                    message.channel,
-                    response,
-                    {
-                        reply: { messageReference: message.id },
-                        allowedMentions: { parse: ['users'] }
+                } else {
+                    const chunks = response.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g'));
+                    // Send first chunk with GIF possibility
+                    await this.sendMessageWithGif(
+                        message.channel,
+                        chunks[0],
+                        {
+                            reply: { messageReference: message.id },
+                            allowedMentions: { parse: ['users'] }
+                        }
+                    );
+                    // Send remaining chunks without GIFs
+                    for (let i = 1; i < chunks.length; i++) {
+                        await message.channel.send({
+                            content: chunks[i],
+                            allowedMentions: { parse: ['users'] }
+                        });
                     }
-                );
-            } else {
-                const chunks = response.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g'));
-                // Send first chunk with GIF possibility
-                await this.sendMessageWithGif(
-                    message.channel,
-                    chunks[0],
-                    {
-                        reply: { messageReference: message.id },
-                        allowedMentions: { parse: ['users'] }
-                    }
-                );
-                // Send remaining chunks without GIFs
-                for (let i = 1; i < chunks.length; i++) {
-                    await message.channel.send({
-                        content: chunks[i],
-                        allowedMentions: { parse: ['users'] }
-                    });
                 }
-            }
 
-            // Then speak the response if TTS is enabled
-            if (this.ttsHandler.isEnabled()) {
-                const guild = this.client.guilds.cache.get(config.TARGET_GUILD_ID);
-                const voiceChannel = guild?.channels.cache.get(config.VOICE_CHANNEL_ID);
-                await this.ttsHandler.speak(response, voiceChannel);
-            }
+                // Then speak the response if TTS is enabled
+                if (this.ttsHandler.isEnabled()) {
+                    const guild = this.client.guilds.cache.get(config.TARGET_GUILD_ID);
+                    const voiceChannel = guild?.channels.cache.get(config.VOICE_CHANNEL_ID);
+                    await this.ttsHandler.speak(response, voiceChannel);
+                }
+            })();
 
         } catch (error) {
             console.error('Error handling message:', error);
